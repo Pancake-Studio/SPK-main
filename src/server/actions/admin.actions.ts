@@ -1,0 +1,262 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { db } from "@/lib/db";
+import { requireAdmin } from "@/lib/auth";
+import {
+  teacherSchema,
+  studentSchema,
+  classSchema,
+  subjectSchema,
+  scheduleSchema,
+  announcementSchema,
+} from "@/lib/validations";
+import {
+  createTeacher,
+  deleteTeacher,
+  createStudent,
+  deleteStudent,
+  createClass,
+  deleteClass,
+  createSubject,
+  deleteSubject,
+  createSchedule,
+  deleteSchedule,
+  bulkCreateSchedules,
+  getImportLookups,
+} from "@/server/services/admin.service";
+import { notifyUsers } from "@/server/services/notification.service";
+import { NOTIFICATION_TYPES, ROLES } from "@/lib/constants";
+import {
+  fieldErrorsFromZod,
+  fail,
+  ok,
+  type ActionState,
+} from "./_helpers";
+
+/** Prisma unique-constraint guard -> friendly message. */
+function uniqueMessage(e: unknown, label: string): string | null {
+  if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
+    return `${label} นี้ถูกใช้งานแล้ว`;
+  }
+  return null;
+}
+
+/* -------------------------------- Teachers ------------------------------ */
+
+export async function createTeacherAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = teacherSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await createTeacher(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถเพิ่มครูได้");
+  }
+  revalidatePath("/admin/teachers");
+  return ok("เพิ่มครูเรียบร้อยแล้ว");
+}
+
+export async function deleteTeacherAction(id: string) {
+  await requireAdmin();
+  await deleteTeacher(id);
+  revalidatePath("/admin/teachers");
+  return { ok: true };
+}
+
+/* -------------------------------- Students ------------------------------ */
+
+export async function createStudentAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = studentSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await createStudent(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "อีเมล/รหัสนักเรียน") ?? "ไม่สามารถเพิ่มนักเรียนได้");
+  }
+  revalidatePath("/admin/students");
+  return ok("เพิ่มนักเรียนเรียบร้อยแล้ว");
+}
+
+export async function deleteStudentAction(id: string) {
+  await requireAdmin();
+  await deleteStudent(id);
+  revalidatePath("/admin/students");
+  return { ok: true };
+}
+
+/* --------------------------------- Classes ------------------------------ */
+
+export async function createClassAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = classSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await createClass(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "ชื่อห้อง") ?? "ไม่สามารถเพิ่มห้องเรียนได้");
+  }
+  revalidatePath("/admin/classes");
+  return ok("เพิ่มห้องเรียนเรียบร้อยแล้ว");
+}
+
+export async function deleteClassAction(id: string) {
+  await requireAdmin();
+  try {
+    await deleteClass(id);
+  } catch {
+    return { ok: false, error: "ลบไม่ได้ ห้องนี้ยังมีนักเรียนหรือตารางอยู่" };
+  }
+  revalidatePath("/admin/classes");
+  return { ok: true };
+}
+
+/* -------------------------------- Subjects ------------------------------ */
+
+export async function createSubjectAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = subjectSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await createSubject(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "รหัสวิชา") ?? "ไม่สามารถเพิ่มวิชาได้");
+  }
+  revalidatePath("/admin/subjects");
+  return ok("เพิ่มวิชาเรียบร้อยแล้ว");
+}
+
+export async function deleteSubjectAction(id: string) {
+  await requireAdmin();
+  try {
+    await deleteSubject(id);
+  } catch {
+    return { ok: false, error: "ลบไม่ได้ วิชานี้ยังถูกใช้ในตารางสอน" };
+  }
+  revalidatePath("/admin/subjects");
+  return { ok: true };
+}
+
+/* -------------------------------- Schedules ----------------------------- */
+
+export async function createScheduleAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = scheduleSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await createSchedule(parsed.data);
+  } catch (e) {
+    return fail(
+      uniqueMessage(e, "คาบเรียนนี้ (ห้อง/วัน/คาบ)") ??
+        "ไม่สามารถเพิ่มคาบเรียนได้",
+    );
+  }
+  revalidatePath("/admin/schedule");
+  return ok("เพิ่มคาบเรียนเรียบร้อยแล้ว");
+}
+
+export async function deleteScheduleAction(id: string) {
+  await requireAdmin();
+  await deleteSchedule(id);
+  revalidatePath("/admin/schedule");
+  return { ok: true };
+}
+
+/** Import timetable rows parsed client-side from CSV/Excel. */
+export async function importSchedulesAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(formData.get("rows") ?? "[]"));
+  } catch {
+    return fail("ไฟล์ไม่ถูกต้อง");
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return fail("ไม่พบข้อมูลในไฟล์");
+  }
+
+  const { classByName, subjectByCode, teacherByCode } = await getImportLookups();
+  const resolved = [];
+  let skipped = 0;
+
+  for (const r of raw as Record<string, string>[]) {
+    const classId = classByName.get(String(r.class ?? r.className ?? "").toUpperCase());
+    const subjectId = subjectByCode.get(String(r.subjectCode ?? r.subject ?? "").toUpperCase());
+    const teacherId = teacherByCode.get(String(r.teacherCode ?? r.teacher ?? "").toUpperCase());
+    const candidate = scheduleSchema.safeParse({
+      classId,
+      subjectId,
+      teacherId,
+      day: String(r.day ?? "").toUpperCase().slice(0, 3),
+      period: r.period,
+      room: r.room,
+    });
+    if (candidate.success) resolved.push(candidate.data);
+    else skipped++;
+  }
+
+  const inserted = await bulkCreateSchedules(resolved);
+  revalidatePath("/admin/schedule");
+  return ok(`นำเข้าสำเร็จ ${inserted} คาบ${skipped ? ` (ข้าม ${skipped} แถวที่ไม่ถูกต้อง)` : ""}`);
+}
+
+/* ------------------------------ Announcements --------------------------- */
+
+export async function createAnnouncementAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const parsed = announcementSchema.safeParse({
+    title: formData.get("title"),
+    body: formData.get("body"),
+    audience: formData.get("audience") || "ALL",
+    isUrgent: formData.get("isUrgent") === "on" || formData.get("isUrgent") === "true",
+  });
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+
+  const announcement = await db.announcement.create({
+    data: { ...parsed.data, authorId: admin.id },
+  });
+
+  const where =
+    parsed.data.audience === "TEACHERS"
+      ? { role: ROLES.TEACHER }
+      : parsed.data.audience === "STUDENTS"
+        ? { role: ROLES.STUDENT }
+        : {};
+  const recipients = await db.user.findMany({ where, select: { id: true } });
+  await notifyUsers(
+    recipients.map((u) => u.id),
+    {
+      type: parsed.data.isUrgent
+        ? NOTIFICATION_TYPES.EMERGENCY
+        : NOTIFICATION_TYPES.ANNOUNCEMENT,
+      title: parsed.data.isUrgent ? `⚠ ด่วน: ${parsed.data.title}` : parsed.data.title,
+      message: parsed.data.body.slice(0, 240),
+      linkUrl: null,
+    },
+  );
+
+  revalidatePath("/admin/announcements");
+  return ok(`ประกาศแล้ว แจ้งเตือน ${recipients.length} คน`);
+}

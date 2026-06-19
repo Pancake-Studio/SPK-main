@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "ตรวจว่าได้อัปเดต PROGRESS.md แล้วหรือยัง",
+            "command": "f=\"/mnt/c/Users/nicky/Documents/Project-Code/SPK-V2/PROGRESS.md\"; if [ -n \"$(find \"$f\" -mmin -20 2>/dev/null)\" ]; then exit 0; else echo '{\"decision\":\"block\",\"reason\":\"ก่อนจบงาน: อัปเดต PROGRESS.md โดยเพิ่มรายการใหม่ไว้บนสุดของหัวข้อ Session Log (วันที่ + สรุปสิ่งที่ทำ + ไฟล์ที่แตะ + ผลตรวจสอบ) แล้วจึงจบงาน ถ้าเทิร์นนี้ไม่ได้แก้อะไรเลย ให้บันทึกสั้น ๆ ว่าทำอะไรไป\"}'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

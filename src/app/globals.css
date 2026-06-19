@@ -1,0 +1,271 @@
+@import "tailwindcss";
+/* Radix open/close, fade, zoom & slide animations (tailwindcss-animate for v4). */
+@import "tw-animate-css";
+
+/* next-themes toggles the `.dark` class on <html>; wire it into Tailwind v4. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ */
+/*  Design tokens — Purple + Yellow/Gold academic theme               */
+/*  Light + Dark are full, hand-tuned palettes (see docs/DESIGN.md).  */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --radius: 0.75rem;
+
+  /* Surfaces */
+  --background: #f8f7fc;
+  --foreground: #1f1b2d;
+
+  --card: #ffffff;
+  --card-foreground: #1f1b2d;
+
+  --popover: #ffffff;
+  --popover-foreground: #1f1b2d;
+
+  /* Brand — Purple */
+  --primary: #7c3aed;
+  --primary-hover: #6d28d9;
+  --primary-foreground: #ffffff;
+
+  --secondary: #ede9fe;
+  --secondary-foreground: #5b21b6;
+
+  /* Accent — Yellow / Gold */
+  --accent: #faf5ff; /* soft purple-tinted hover surface */
+  --accent-foreground: #5b21b6;
+  --gold: #eab308;
+  --gold-foreground: #422006;
+  --yellow: #facc15;
+  --yellow-foreground: #422006;
+
+  /* Muted / neutral */
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+
+  /* Semantic */
+  --success: #22c55e;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #422006;
+  --info: #0284c7;
+  --info-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  /* Lines & inputs */
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #7c3aed;
+
+  /* Sidebar */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #4b5563;
+  --sidebar-border: #ececf3;
+  --sidebar-accent: #f5f3ff;
+  --sidebar-accent-foreground: #6d28d9;
+  --sidebar-primary: #7c3aed;
+  --sidebar-primary-foreground: #ffffff;
+
+  /* Timetable cell states */
+  --tt-current: #ede9fe;
+  --tt-current-foreground: #5b21b6;
+  --tt-current-border: #c4b5fd;
+  --tt-swapped: #fef9c3;
+  --tt-swapped-foreground: #713f12;
+  --tt-swapped-border: #fde047;
+  --tt-free: #f3f4f6;
+  --tt-free-foreground: #9ca3af;
+
+  /* Chart palette */
+  --chart-1: #7c3aed;
+  --chart-2: #eab308;
+  --chart-3: #0ea5e9;
+  --chart-4: #22c55e;
+  --chart-5: #f97316;
+}
+
+.dark {
+  --background: #0f0b1a;
+  --foreground: #f9fafb;
+
+  --card: #221c35;
+  --card-foreground: #f9fafb;
+
+  --popover: #181425;
+  --popover-foreground: #f9fafb;
+
+  --primary: #a78bfa;
+  --primary-hover: #8b5cf6;
+  --primary-foreground: #16121f;
+
+  --secondary: #2a2440;
+  --secondary-foreground: #ddd6fe;
+
+  --accent: #251f3a;
+  --accent-foreground: #ddd6fe;
+  --gold: #facc15;
+  --gold-foreground: #1f1b2d;
+  --yellow: #fde047;
+  --yellow-foreground: #1f1b2d;
+
+  --muted: #221c35;
+  --muted-foreground: #c4c7d0;
+
+  --success: #4ade80;
+  --success-foreground: #052e16;
+  --warning: #fbbf24;
+  --warning-foreground: #1f1b2d;
+  --info: #38bdf8;
+  --info-foreground: #082f49;
+  --destructive: #f87171;
+  --destructive-foreground: #1f0b0b;
+
+  --border: #312a49;
+  --input: #312a49;
+  --ring: #a78bfa;
+
+  --sidebar: #181425;
+  --sidebar-foreground: #c4c7d0;
+  --sidebar-border: #2a2440;
+  --sidebar-accent: #251f3a;
+  --sidebar-accent-foreground: #ddd6fe;
+  --sidebar-primary: #a78bfa;
+  --sidebar-primary-foreground: #16121f;
+
+  --tt-current: #2e2552;
+  --tt-current-foreground: #ddd6fe;
+  --tt-current-border: #6d28d9;
+  --tt-swapped: #3f3410;
+  --tt-swapped-foreground: #fde047;
+  --tt-swapped-border: #a16207;
+  --tt-free: #1c1730;
+  --tt-free-foreground: #6b6580;
+
+  --chart-1: #a78bfa;
+  --chart-2: #facc15;
+  --chart-3: #38bdf8;
+  --chart-4: #4ade80;
+  --chart-5: #fb923c;
+}
+
+/* Map design tokens to Tailwind's color/utility system. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-yellow: var(--yellow);
+  --color-yellow-foreground: var(--yellow-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+
+  --color-tt-current: var(--tt-current);
+  --color-tt-current-foreground: var(--tt-current-foreground);
+  --color-tt-current-border: var(--tt-current-border);
+  --color-tt-swapped: var(--tt-swapped);
+  --color-tt-swapped-foreground: var(--tt-swapped-foreground);
+  --color-tt-swapped-border: var(--tt-swapped-border);
+  --color-tt-free: var(--tt-free);
+  --color-tt-free-foreground: var(--tt-free-foreground);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-inter), var(--font-noto-thai), ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    /* Smooth, fast theme switch per DESIGN.md (150–250ms). */
+    transition: background-color 200ms ease, color 200ms ease;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Consistent focus ring */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--primary) 25%, transparent);
+  }
+}
+
+@layer utilities {
+  /* Thin, theme-aware scrollbars for content panes & timetable */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 9999px;
+  }
+}

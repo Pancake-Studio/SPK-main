@@ -1,0 +1,53 @@
+"use server";
+
+import { headers } from "next/headers";
+import { requireUser } from "@/lib/auth";
+import {
+  saveSubscription,
+  removeSubscription,
+  sendPushToUser,
+  countUserSubscriptions,
+  isPushConfigured,
+} from "@/server/services/push.service";
+
+type BrowserSubscription = {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+};
+
+export async function subscribePushAction(sub: BrowserSubscription) {
+  const user = await requireUser();
+  if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
+    return { ok: false };
+  }
+  const h = await headers();
+  await saveSubscription(user.id, sub, h.get("user-agent")?.slice(0, 255) ?? undefined);
+  return { ok: true };
+}
+
+export async function unsubscribePushAction(endpoint: string) {
+  await requireUser();
+  if (endpoint) await removeSubscription(endpoint);
+  return { ok: true };
+}
+
+/** Send a test push to the current user — deterministic device-push check. */
+export async function sendTestPushAction() {
+  const user = await requireUser();
+  const result = await sendPushToUser(user.id, {
+    title: "ทดสอบการแจ้งเตือน",
+    message: "ถ้าเห็นข้อความนี้ แสดงว่าการแจ้งเตือนบนอุปกรณ์ใช้งานได้ ✅",
+    url: "/dashboard",
+    tag: "test",
+  });
+  return { ok: result.sent > 0, ...result };
+}
+
+/** Status for the Settings notifications card. */
+export async function getPushStatusAction() {
+  const user = await requireUser();
+  return {
+    configured: isPushConfigured(),
+    subscriptions: await countUserSubscriptions(user.id),
+  };
+}

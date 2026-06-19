@@ -1,0 +1,250 @@
+// SPK School Platform — Prisma schema
+//
+// Local dev uses SQLite (zero-setup, browse with `npm run db:studio`).
+// For production PostgreSQL, change `provider` below to "postgresql" and point
+// DATABASE_URL at your managed Postgres. The schema is written to be portable:
+//  - role/status/type are stored as strings (validated in app via Zod), not
+//    native DB enums, so the same schema compiles on SQLite and Postgres.
+//  - no scalar-list (`String[]`) columns, which SQLite does not support.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Authentication principal. One row per person who can log in.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("STUDENT") // ADMIN | TEACHER | STUDENT
+  name         String
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacher        Teacher?
+  student        Student?
+  sessions       Session[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  announcements  Announcement[] @relation("AnnouncementAuthor")
+  swapDecisions  SwapRequest[]  @relation("SwapDecidedBy")
+  swapLogs       SwapLog[]      @relation("SwapLogActor")
+  pushSubscriptions PushSubscription[]
+
+  @@index([role])
+}
+
+/// Web Push subscription (one per browser/device the user enabled). Used to
+/// deliver OS-level notifications even when the app/tab is closed.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// DB-backed session (HttpOnly cookie holds an opaque token; we store its hash).
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  csrfSecret  String
+  userAgent   String?
+  ipAddress   String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Teacher profile (1:1 with a User whose role = TEACHER).
+model Teacher {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  teacherCode String  @unique
+  title       String? // Mr. / Mrs. / Ms. / Dr.
+  department  String?
+  phone       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  schedules            Schedule[]
+  swapRequestsMade     SwapRequest[] @relation("SwapRequester")
+  swapRequestsReceived SwapRequest[] @relation("SwapTarget")
+
+  @@index([department])
+}
+
+/// Student profile (1:1 with a User whose role = STUDENT).
+model Student {
+  id          String @id @default(cuid())
+  userId      String @unique
+  studentCode String @unique
+  classId     String
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id])
+
+  @@index([classId])
+}
+
+/// Homeroom class group, e.g. "M.4/1".
+model Class {
+  id         String  @id @default(cuid())
+  className  String  @unique
+  gradeLevel String
+  room       String?
+
+  students  Student[]
+  schedules Schedule[]
+
+  @@index([gradeLevel])
+}
+
+/// Academic subject, e.g. "Mathematics" / "MATH101".
+model Subject {
+  id          String  @id @default(cuid())
+  subjectName String
+  subjectCode String  @unique
+  colorHex    String? // optional accent for timetable cells
+
+  schedules Schedule[]
+}
+
+/// A single timetable slot: which teacher teaches which subject to which class
+/// on a given weekday + period. This is the unit that period-swaps exchange.
+model Schedule {
+  id        String   @id @default(cuid())
+  classId   String
+  subjectId String
+  teacherId String
+  day       String // MON | TUE | WED | THU | FRI
+  period    Int
+  room      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id])
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+
+  swapsAsSource SwapRequest[] @relation("SwapSourceSchedule")
+  swapsAsTarget SwapRequest[] @relation("SwapTargetSchedule")
+
+  // A class can have only one lesson per day+period.
+  @@unique([classId, day, period])
+  @@index([teacherId, day, period])
+  @@index([day, period])
+}
+
+/// Teacher period-swap request (the core feature).
+/// On APPROVE we exchange `Schedule.teacherId` between source and target slots.
+model SwapRequest {
+  id               String   @id @default(cuid())
+  requesterId      String
+  targetTeacherId  String
+  sourceScheduleId String
+  targetScheduleId String
+  reason           String?
+  status           String   @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  decidedById      String?
+  respondedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  requester      Teacher  @relation("SwapRequester", fields: [requesterId], references: [id])
+  targetTeacher  Teacher  @relation("SwapTarget", fields: [targetTeacherId], references: [id])
+  sourceSchedule Schedule @relation("SwapSourceSchedule", fields: [sourceScheduleId], references: [id])
+  targetSchedule Schedule @relation("SwapTargetSchedule", fields: [targetScheduleId], references: [id])
+  decidedBy      User?    @relation("SwapDecidedBy", fields: [decidedById], references: [id])
+
+  logs SwapLog[]
+
+  @@index([requesterId])
+  @@index([targetTeacherId])
+  @@index([status])
+}
+
+/// Immutable audit trail for swaps: who did what, with before/after snapshots.
+model SwapLog {
+  id            String   @id @default(cuid())
+  swapRequestId String
+  action        String // CREATED | APPROVED | REJECTED | CANCELLED
+  actorId       String?
+  beforeJson    String? // JSON snapshot of the two schedule slots before
+  afterJson     String? // JSON snapshot after
+  createdAt     DateTime @default(now())
+
+  swapRequest SwapRequest @relation(fields: [swapRequestId], references: [id], onDelete: Cascade)
+  actor       User?       @relation("SwapLogActor", fields: [actorId], references: [id])
+
+  @@index([swapRequestId])
+}
+
+/// In-app notification (real-time delivery layered on top via SSE/WebSocket).
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String // SWAP_REQUEST | SWAP_APPROVED | ... | EMERGENCY
+  title     String
+  message   String
+  linkUrl   String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+/// School-wide / role-targeted announcement broadcast by an admin.
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  audience  String   @default("ALL") // ALL | TEACHERS | STUDENTS
+  isUrgent  Boolean  @default(false)
+  authorId  String
+  createdAt DateTime @default(now())
+
+  author User @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+
+  @@index([audience])
+  @@index([createdAt])
+}
+
+/// General security audit log (logins, role-sensitive actions, imports).
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  metaJson  String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
