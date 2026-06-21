@@ -1,8 +1,16 @@
 import "server-only";
 
+import * as XLSX from "xlsx";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { SWAP_STATUS, ROLES } from "@/lib/constants";
+import {
+  teacherSchema,
+  studentSchema,
+  classSchema,
+  subjectSchema,
+  scheduleSchema,
+} from "@/lib/validations";
 import type {
   TeacherInput,
   StudentInput,
@@ -479,4 +487,371 @@ export async function getImportLookups() {
       teachers.map((t) => [t.teacherCode.toUpperCase(), t.id]),
     ),
   };
+}
+
+/* ------------------------------- Excel Export --------------------------- */
+
+function bookFromRows(rows: Record<string, unknown>[], columns: string[], sheetName: string): Buffer {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows, { header: columns });
+  // Ensure every declared header is present in row 0 even if data is empty.
+  for (let i = 0; i < columns.length; i++) {
+    const ref = XLSX.utils.encode_cell({ r: 0, c: i });
+    if (!ws[ref]) ws[ref] = { t: "s", v: columns[i] };
+  }
+  // Freeze the header row and add an autofilter.
+  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+  ws["!autofilter"] = { ref: ws["!ref"] ?? `A1:${XLSX.utils.encode_col(columns.length - 1)}1` };
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+}
+
+export async function exportTeachers() {
+  const rows = await db.teacher.findMany({
+    include: { user: true },
+    orderBy: { teacherCode: "asc" },
+  });
+  const columns = ["teacherCode", "name", "email", "title", "department", "phone"];
+  return bookFromRows(
+    rows.map((t) => ({
+      teacherCode: t.teacherCode,
+      name: t.user.name,
+      email: t.user.email,
+      title: t.title ?? "",
+      department: t.department ?? "",
+      phone: t.phone ?? "",
+    })),
+    columns,
+    "Teachers",
+  );
+}
+
+export async function exportStudents() {
+  const rows = await db.student.findMany({
+    include: { user: true, class: true },
+    orderBy: { studentCode: "asc" },
+  });
+  const columns = ["studentCode", "name", "email", "className"];
+  return bookFromRows(
+    rows.map((s) => ({
+      studentCode: s.studentCode,
+      name: s.user.name,
+      email: s.user.email,
+      className: s.class?.className ?? "",
+    })),
+    columns,
+    "Students",
+  );
+}
+
+export async function exportClasses() {
+  const rows = await db.class.findMany({ orderBy: { className: "asc" } });
+  const columns = ["className", "gradeLevel", "room"];
+  return bookFromRows(
+    rows.map((c) => ({
+      className: c.className,
+      gradeLevel: c.gradeLevel,
+      room: c.room ?? "",
+    })),
+    columns,
+    "Classes",
+  );
+}
+
+export async function exportSubjects() {
+  const rows = await db.subject.findMany({ orderBy: { subjectCode: "asc" } });
+  const columns = ["subjectCode", "subjectName", "colorHex"];
+  return bookFromRows(
+    rows.map((s) => ({
+      subjectCode: s.subjectCode,
+      subjectName: s.subjectName,
+      colorHex: s.colorHex ?? "",
+    })),
+    columns,
+    "Subjects",
+  );
+}
+
+export async function exportSchedules() {
+  const rows = await db.schedule.findMany({
+    include: {
+      class: true,
+      subject: true,
+      teacher: { include: { user: true } },
+    },
+    orderBy: [{ class: { className: "asc" } }, { day: "asc" }, { period: "asc" }],
+  });
+  const columns = ["className", "subjectCode", "teacherCode", "day", "period", "room"];
+  return bookFromRows(
+    rows.map((s) => ({
+      className: s.class.className,
+      subjectCode: s.subject.subjectCode,
+      teacherCode: s.teacher.teacherCode,
+      day: s.day,
+      period: s.period,
+      room: s.room ?? "",
+    })),
+    columns,
+    "Schedules",
+  );
+}
+
+/* ------------------------------- Excel Sync ----------------------------- */
+
+export type SyncResult = {
+  added: number;
+  updated: number;
+  deleted: number;
+  skipped: number;
+};
+
+type SyncRow = Record<string, unknown>;
+
+function str(row: SyncRow, key: string): string {
+  const v = row[key];
+  if (v === undefined || v === null) return "";
+  return String(v).trim();
+}
+
+export async function syncTeachers(rows: SyncRow[]): Promise<SyncResult> {
+  const existing = await db.teacher.findMany({ include: { user: true } });
+  const byCode = new Map(existing.map((t) => [t.teacherCode.toUpperCase(), t]));
+  const seen = new Set<string>();
+  const result: SyncResult = { added: 0, updated: 0, deleted: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const parsed = teacherSchema.safeParse({
+      name: str(row, "name"),
+      email: str(row, "email"),
+      teacherCode: str(row, "teacherCode"),
+      title: str(row, "title") || undefined,
+      department: str(row, "department") || undefined,
+      phone: str(row, "phone") || undefined,
+      password: undefined,
+    });
+    if (!parsed.success) {
+      result.skipped++;
+      continue;
+    }
+    const code = parsed.data.teacherCode.toUpperCase();
+    seen.add(code);
+    const cur = byCode.get(code);
+    try {
+      if (cur) {
+        await updateTeacher({ ...parsed.data, id: cur.id });
+        result.updated++;
+      } else {
+        await createTeacher(parsed.data);
+        result.added++;
+      }
+    } catch {
+      result.skipped++;
+    }
+  }
+
+  const missing = existing.filter((t) => !seen.has(t.teacherCode.toUpperCase())).map((t) => t.id);
+  if (missing.length > 0) {
+    try {
+      await deleteTeachers(missing);
+      result.deleted += missing.length;
+    } catch {
+      /* ignore delete failures */
+    }
+  }
+  return result;
+}
+
+export async function syncStudents(rows: SyncRow[]): Promise<SyncResult> {
+  const [existing, classes] = await Promise.all([
+    db.student.findMany({ include: { user: true } }),
+    db.class.findMany({ select: { id: true, className: true } }),
+  ]);
+  const byCode = new Map(existing.map((s) => [s.studentCode.toUpperCase(), s]));
+  const classByName = new Map(classes.map((c) => [c.className.toUpperCase(), c.id]));
+  const seen = new Set<string>();
+  const result: SyncResult = { added: 0, updated: 0, deleted: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const classId = classByName.get(str(row, "className").toUpperCase());
+    const parsed = studentSchema.safeParse({
+      name: str(row, "name"),
+      email: str(row, "email"),
+      studentCode: str(row, "studentCode"),
+      classId,
+      password: undefined,
+    });
+    if (!parsed.success) {
+      result.skipped++;
+      continue;
+    }
+    const code = parsed.data.studentCode.toUpperCase();
+    seen.add(code);
+    const cur = byCode.get(code);
+    try {
+      if (cur) {
+        await updateStudent({ ...parsed.data, id: cur.id });
+        result.updated++;
+      } else {
+        await createStudent(parsed.data);
+        result.added++;
+      }
+    } catch {
+      result.skipped++;
+    }
+  }
+
+  const missing = existing.filter((s) => !seen.has(s.studentCode.toUpperCase())).map((s) => s.id);
+  if (missing.length > 0) {
+    try {
+      await deleteStudents(missing);
+      result.deleted += missing.length;
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
+}
+
+export async function syncClasses(rows: SyncRow[]): Promise<SyncResult> {
+  const existing = await db.class.findMany();
+  const byName = new Map(existing.map((c) => [c.className.toUpperCase(), c]));
+  const seen = new Set<string>();
+  const result: SyncResult = { added: 0, updated: 0, deleted: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const parsed = classSchema.safeParse({
+      className: str(row, "className"),
+      gradeLevel: str(row, "gradeLevel"),
+      room: str(row, "room") || undefined,
+    });
+    if (!parsed.success) {
+      result.skipped++;
+      continue;
+    }
+    const name = parsed.data.className.toUpperCase();
+    seen.add(name);
+    const cur = byName.get(name);
+    try {
+      if (cur) {
+        await updateClass({ ...parsed.data, id: cur.id });
+        result.updated++;
+      } else {
+        await createClass(parsed.data);
+        result.added++;
+      }
+    } catch {
+      result.skipped++;
+    }
+  }
+
+  const missing = existing.filter((c) => !seen.has(c.className.toUpperCase())).map((c) => c.id);
+  if (missing.length > 0) {
+    try {
+      await deleteClasses(missing);
+      result.deleted += missing.length;
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
+}
+
+export async function syncSubjects(rows: SyncRow[]): Promise<SyncResult> {
+  const existing = await db.subject.findMany();
+  const byCode = new Map(existing.map((s) => [s.subjectCode.toUpperCase(), s]));
+  const seen = new Set<string>();
+  const result: SyncResult = { added: 0, updated: 0, deleted: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const parsed = subjectSchema.safeParse({
+      subjectName: str(row, "subjectName"),
+      subjectCode: str(row, "subjectCode"),
+      colorHex: str(row, "colorHex") || undefined,
+    });
+    if (!parsed.success) {
+      result.skipped++;
+      continue;
+    }
+    const code = parsed.data.subjectCode.toUpperCase();
+    seen.add(code);
+    const cur = byCode.get(code);
+    try {
+      if (cur) {
+        await updateSubject({ ...parsed.data, id: cur.id });
+        result.updated++;
+      } else {
+        await createSubject(parsed.data);
+        result.added++;
+      }
+    } catch {
+      result.skipped++;
+    }
+  }
+
+  const missing = existing.filter((s) => !seen.has(s.subjectCode.toUpperCase())).map((s) => s.id);
+  if (missing.length > 0) {
+    try {
+      await deleteSubjects(missing);
+      result.deleted += missing.length;
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
+}
+
+export async function syncSchedules(rows: SyncRow[]): Promise<SyncResult> {
+  const [existing, { classByName, subjectByCode, teacherByCode }] = await Promise.all([
+    db.schedule.findMany({ include: { class: true } }),
+    getImportLookups(),
+  ]);
+  const byKey = new Map(existing.map((s) => [`${s.class.className.toUpperCase()}|${s.day}|${s.period}`, s.id]));
+  const seen = new Set<string>();
+  const result: SyncResult = { added: 0, updated: 0, deleted: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const className = str(row, "className").toUpperCase();
+    const classId = classByName.get(className);
+    const subjectId = subjectByCode.get(str(row, "subjectCode").toUpperCase());
+    const teacherId = teacherByCode.get(str(row, "teacherCode").toUpperCase());
+    const day = str(row, "day").toUpperCase().slice(0, 3);
+    const period = row.period;
+    const parsed = scheduleSchema.safeParse({
+      classId,
+      subjectId,
+      teacherId,
+      day,
+      period,
+      room: str(row, "room") || undefined,
+    });
+    if (!parsed.success) {
+      result.skipped++;
+      continue;
+    }
+    const key = `${className}|${parsed.data.day}|${parsed.data.period}`;
+    seen.add(key);
+    const curId = byKey.get(key);
+    try {
+      if (curId) {
+        await updateSchedule({ ...parsed.data, id: curId });
+        result.updated++;
+      } else {
+        await createSchedule(parsed.data);
+        result.added++;
+      }
+    } catch {
+      result.skipped++;
+    }
+  }
+
+  const missing = existing.filter((s) => !seen.has(`${s.class.className.toUpperCase()}|${s.day}|${s.period}`)).map((s) => s.id);
+  if (missing.length > 0) {
+    try {
+      await deleteSchedules(missing);
+      result.deleted += missing.length;
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
 }

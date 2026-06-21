@@ -72,6 +72,7 @@ export type PushResult = {
   total: number;
   sent: number;
   failed: number;
+  mismatch: number;
   configured: boolean;
 };
 
@@ -82,14 +83,15 @@ export async function sendPushToUser(
 ): Promise<PushResult> {
   if (!ensureVapid()) {
     console.error("[push] VAPID keys not configured — skipping send");
-    return { total: 0, sent: 0, failed: 0, configured: false };
+    return { total: 0, sent: 0, failed: 0, mismatch: 0, configured: false };
   }
   const subs = await db.pushSubscription.findMany({ where: { userId } });
-  if (subs.length === 0) return { total: 0, sent: 0, failed: 0, configured: true };
+  if (subs.length === 0) return { total: 0, sent: 0, failed: 0, mismatch: 0, configured: true };
 
   const body = JSON.stringify(payload);
   let sent = 0;
   let failed = 0;
+  let mismatch = 0;
 
   await Promise.all(
     subs.map(async (s) => {
@@ -103,18 +105,32 @@ export async function sendPushToUser(
         failed++;
         const e = err as { statusCode?: number; body?: string } | undefined;
         const code = e?.statusCode;
-        // Subscription gone/expired — prune it.
-        if (code === 404 || code === 410) {
+        const bodyText = e?.body ?? "";
+        // A subscription created with a now-rotated VAPID key gets rejected. Chrome/
+        // FCM returns 400 "VapidPkHashMismatch"; it can also return 403 "the VAPID
+        // credentials ... do not correspond to the credentials used to create the
+        // subscriptions". Treat both as a key mismatch so the dead sub is pruned.
+        const isVapidMismatch =
+          (code === 400 && /VapidPkHashMismatch/i.test(bodyText)) ||
+          (code === 403 && /vapid|do not correspond|credentials/i.test(bodyText));
+        // Subscription gone/expired or registered with a different VAPID key — prune it.
+        if (code === 404 || code === 410 || isVapidMismatch) {
           await db.pushSubscription.delete({ where: { id: s.id } }).catch(() => {});
+          if (isVapidMismatch) {
+            mismatch++;
+            console.warn(
+              `[push] pruned subscription due to VAPID key mismatch: ${s.endpoint.slice(0, 60)}`,
+            );
+          }
         } else {
-          // Other errors (e.g. 401/403 VAPID mismatch, 400) — log so they're visible.
+          // Other errors (e.g. 401/403 VAPID mismatch) — log so they're visible.
           console.error(
-            `[push] send failed status=${code ?? "?"} user=${userId} body=${e?.body ?? ""}`,
+            `[push] send failed status=${code ?? "?"} user=${userId} body=${bodyText}`,
           );
         }
       }
     }),
   );
 
-  return { total: subs.length, sent, failed, configured: true };
+  return { total: subs.length, sent, failed, mismatch, configured: true };
 }

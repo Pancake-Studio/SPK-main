@@ -9,9 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { SelectField } from "@/components/admin/select-field";
+import { RichTextEditor } from "@/components/rich-text-editor";
 import { createAnnouncementAction } from "@/server/actions/admin.actions";
 import { initialActionState } from "@/server/actions/_helpers";
 
@@ -28,11 +28,13 @@ export function AnnouncementComposer() {
     initialActionState,
   );
   const formRef = React.useRef<HTMLFormElement>(null);
+  const [editorKey, setEditorKey] = React.useState(0);
 
   React.useEffect(() => {
     if (state.ok) {
       toast.success(state.message ?? "ประกาศแล้ว");
       formRef.current?.reset();
+      setEditorKey((k) => k + 1);
       router.refresh();
     } else if (state.error && !state.fieldErrors) {
       toast.error(state.error);
@@ -54,7 +56,7 @@ export function AnnouncementComposer() {
 
           <div className="space-y-1.5">
             <Label htmlFor="body">เนื้อหา</Label>
-            <Textarea id="body" name="body" rows={4} placeholder="รายละเอียดประกาศ…" aria-invalid={Boolean(state.fieldErrors?.body)} />
+            <RichTextEditor key={editorKey} name="body" placeholder="รายละเอียดประกาศ…" />
             {state.fieldErrors?.body && <p className="text-xs text-destructive">{state.fieldErrors.body}</p>}
           </div>
 

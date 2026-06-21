@@ -74,6 +74,18 @@ export type PeriodNo = (typeof PERIODS)[number]["period"];
 export const PERIOD_NUMBERS: number[] = PERIODS.map((p) => p.period);
 
 /** Auth/session config. */
-export const SESSION_COOKIE = "spk_session";
-export const SESSION_MAX_AGE_DAYS = 7;
-export const CSRF_COOKIE = "spk_csrf";
+// New name for the Auth.js (NextAuth v5) JWT cookie. Deliberately *not*
+// "spk_session" — the old custom-session system used that name, and a leftover
+// opaque token there makes Auth.js throw "Invalid Compact JWE". Using a fresh
+// name means stale old cookies are simply ignored.
+export const SESSION_COOKIE = "spk_auth";
+
+/** Data-sync entities (shared between server and client). */
+export const ENTITY_KEYS = [
+  "teachers",
+  "students",
+  "classes",
+  "subjects",
+  "schedules",
+] as const;
+export type EntityKey = (typeof ENTITY_KEYS)[number];

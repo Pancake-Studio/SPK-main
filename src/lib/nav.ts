@@ -15,6 +15,7 @@ export type NavIcon =
   | "schedule"
   | "swap"
   | "announce"
+  | "sync"
   | "settings"
   | "bell"
   | "profile";
@@ -29,6 +30,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { label: "ตารางสอน", href: "/admin/schedule", icon: "schedule" },
     { label: "คำขอแลกคาบ", href: "/admin/swaps", icon: "swap" },
     { label: "ประกาศ", href: "/admin/announcements", icon: "announce" },
+    { label: "Sync Excel", href: "/admin/data-sync", icon: "sync" },
   ],
   [ROLES.TEACHER]: [
     { label: "ภาพรวม", href: "/teacher", icon: "dashboard" },

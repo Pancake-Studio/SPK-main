@@ -31,7 +31,7 @@ export default async function AppLayout({
   return (
     <AppShell
       role={user.role}
-      user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl }}
+      user={{ name: user.name, email: user.email, avatarUrl: user.image }}
       notifications={notifications}
       unread={unread}
     >

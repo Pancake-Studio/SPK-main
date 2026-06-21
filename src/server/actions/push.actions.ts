@@ -17,12 +17,25 @@ type BrowserSubscription = {
 
 export async function subscribePushAction(sub: BrowserSubscription) {
   const user = await requireUser();
+  console.log("[push-action] subscribePushAction called for user:", user.id);
   if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
+    console.error("[push-action] subscription keys missing:", {
+      endpoint: Boolean(sub?.endpoint),
+      p256dh: Boolean(sub?.keys?.p256dh),
+      auth: Boolean(sub?.keys?.auth),
+    });
     return { ok: false };
   }
-  const h = await headers();
-  await saveSubscription(user.id, sub, h.get("user-agent")?.slice(0, 255) ?? undefined);
-  return { ok: true };
+  try {
+    const h = await headers();
+    console.log("[push-action] saving subscription to db...");
+    await saveSubscription(user.id, sub, h.get("user-agent")?.slice(0, 255) ?? undefined);
+    console.log("[push-action] subscription saved");
+    return { ok: true };
+  } catch (e) {
+    console.error("[push-action] error saving subscription:", e instanceof Error ? e.message : String(e));
+    throw e;
+  }
 }
 
 export async function unsubscribePushAction(endpoint: string) {

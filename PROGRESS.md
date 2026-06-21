@@ -148,6 +148,135 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 > กติกา: ทุกครั้งที่มีการแก้ไข/เพิ่มงาน ให้ **เพิ่มรายการใหม่ไว้บนสุด** ของหัวข้อนี้
 > (วันที่ · สรุปสิ่งที่ทำ · ไฟล์/ส่วนที่แตะ · ผลการตรวจสอบ)
 
+### 2026-06-21 — แก้ 404 ตอนคลิกแจ้งเตือนประกาศ (สร้างหน้า /announcements/[id])
+- **ปัญหา:** คลิกแจ้งเตือนประกาศเด้งไป `/announcements/{id}` แล้ว 404 — notification ตั้ง `linkUrl` เป็น path นี้ ([admin.actions.ts:512](src/server/actions/admin.actions.ts#L512)) แต่ route ไม่มี (มีแค่ `/admin/announcements`)
+- **แก้:** สร้าง [src/app/(app)/announcements/[id]/page.tsx](src/app/(app)/announcements/%5Bid%5D/page.tsx) — หน้า detail ใช้ร่วมทุก role (อยู่ใน group `(app)` จึงผ่าน `requireUser()` ของ layout). มี access control ตาม audience: STUDENTS→นักเรียน, TEACHERS→ครู, ALL→ทุกคน, ADMIN เห็นหมด; นอก audience คืน `notFound()`. render body ด้วย `SafeHtml` (รองรับ rich text). เพิ่ม `/announcements` ใน `PROTECTED_PREFIXES` + matcher ของ [src/proxy.ts](src/proxy.ts)
+- **ผลตรวจสอบ:** `npx tsc --noEmit` ผ่าน, `npm run build` สำเร็จ — route `ƒ /announcements/[id]` ขึ้น
+
+### 2026-06-21 — หยุดแจ้งเตือนหลัง logout
+- **ปัญหา:** หลัง logout ยังได้รับ push บนเครื่องนั้น เพราะ subscription ไม่ถูกลบ (server ยังส่งให้ device เดิม)
+- **แก้:** [src/components/layout/user-menu.tsx](src/components/layout/user-menu.tsx) เพิ่มฟังก์ชัน `logout()` — ก่อน `signOut()` จะ `getSubscription()` ของเครื่องนี้ แล้วเรียก `unsubscribePushAction(endpoint)` (ลบใน DB ขณะยัง auth อยู่) + `sub.unsubscribe()` (ลบใน browser). ลบเฉพาะเครื่องนี้ ไม่กระทบ device อื่นที่ยัง login. ใส่ timeout 2s กัน `serviceWorker.ready` ค้าง และ best-effort ไม่บล็อก logout
+- **ผลตรวจสอบ:** `npx tsc --noEmit` ผ่าน
+
+### 2026-06-21 — สรุปสาเหตุจริงของ Android push (403 VAPID) + auth proxy/cookie/secret fixes
+- **Android push — สาเหตุจริง (ยืนยันด้วยการส่งตรง):** subscription ของ Android ถูกสร้างด้วย **VAPID key เก่า** (มีการ rotate key มาก่อน) → FCM ตอบ **403 "the VAPID credentials ... do not correspond to the credentials used to create the subscriptions"**. ที่เห็น "success" คือ sub ของ iPhone ในบัญชีเดียวกันรับแทน. **ไม่ใช่ปัญหา service worker cache** ตามที่เดาไว้ในรายการก่อนหน้า (sw.js ยังเป็น v2 ปกติ ใช้งานได้)
+- **แก้ (โค้ด 2 จุด):**
+  - [src/server/services/push.service.ts](src/server/services/push.service.ts): ขยายเงื่อนไข prune ให้รวม `403` ที่ body มีคำว่า vapid/credentials/"do not correspond" (เดิม prune แค่ 400 VapidPkHashMismatch / 404 / 410) → sub ตาย ๆ จะถูกลบอัตโนมัติ
+  - [src/components/pwa/use-push.ts](src/components/pwa/use-push.ts): เพิ่ม `subscriptionMatchesKey()` — เทียบ `applicationServerKey` ของ subscription เดิมกับ VAPID key ปัจจุบัน ถ้าไม่ตรงให้ `unsubscribe()` แล้วสมัครใหม่ด้วย key ปัจจุบัน (เดิมใช้ `getSubscription()` ซ้ำกับ key เก่าตลอด)
+- **ขั้นตอนผู้ใช้:** เปิด Settings → การแจ้งเตือน บน Android อีกครั้ง (โค้ดจะ unsubscribe ตัวเก่า + สมัครใหม่ให้เอง) แล้วกดส่งทดสอบ. sub เก่าใน DB จะถูก prune ตอน send ครั้งถัดไป (หรือลบเองได้)
+- **module factory error:** เป็น stale Turbopack dev chunk ในแท็บเบราว์เซอร์ (ไม่ใช่บั๊ก) — hard reload (Ctrl+Shift+R) หรือลบ `.next` แล้วรีสตาร์ท. sw.js fetch handler ว่าง ไม่ได้แคช `_next` chunks จึงไม่ใช่ต้นเหตุ
+- **Auth (ต่อจากย้าย NextAuth):**
+  - rename `middleware.ts` → [src/proxy.ts](src/proxy.ts) (ฟังก์ชัน `middleware`→`proxy`) แก้ deprecation warning ของ Next 16
+  - เปลี่ยนชื่อ cookie ใน [src/lib/constants.ts](src/lib/constants.ts): `SESSION_COOKIE` `spk_session`→`spk_auth` แก้ `JWTSessionError: Invalid Compact JWE` (cookie เก่ารูปแบบ custom-session ชนชื่อ)
+  - แก้ [.env](.env): ลบ `AUTH_SECRET` ซ้ำ (มี 2 บรรทัด ทำให้ secret ไม่คงที่ → `no matching decryption secret`), รวมเหลือค่าเดียว, เพิ่ม `AUTH_URL`
+- **ผลตรวจสอบ:** `npx tsc --noEmit` ผ่าน, `npm run build` สำเร็จ (route proxy ขึ้น), ยืนยัน 403 VAPID ด้วยสคริปต์ส่งตรงไป Android sub
+- **ค้าง:** `AUTH_SECRET` ยังเป็น dev placeholder — ต้อง gen ค่าจริงก่อน deploy; redirect URI ใน Google Console ต้องเป็น `…/api/auth/callback/google`
+
+### 2026-06-21 — (เดิม/ทบทวนแล้วไม่ตรงสาเหตุ) แก้ module factory error + ซ่อม Android push notifications
+> หมายเหตุ: รายการนี้เดาว่าเป็นปัญหา service worker cache ซึ่ง**ไม่ใช่สาเหตุจริง** ของ Android push — ดูรายการบนสุด (403 VAPID key เก่า)
+- **ปัญหา:**
+  1. Browser error: `Module ... was instantiated ... but the module factory is not available` ที่ `notification-feed.tsx` เมื่อ import server action
+  2. แจ้งเตือนไม่เด้งบน Android
+- **สาเหตุ:**
+  1. Service worker `public/sw.js` มี fetch handler เปล่า `() => {}` ซึ่งใน Next.js dev mode อาจดัก `_next` chunks ทำให้ HMR โหลด module ไม่สำเร็จ + `.next` cache มีทั้ง `build/` และ `dev/` (รัน `next build` ทับ dev cache)
+  2. SW รุ่นเก่าอาจยังค้างอยู่บน Android device หรือ browser ไม่ fetch `sw.js` ใหม่เพราะ HTTP cache
+- **แก้:**
+  - [public/sw.js](public/sw.js): 
+    - fetch handler ข้าม `_next` และ `__webpack_hmr` เส้นทาง (dev-safe)
+    - push handler เพิ่ม `console.log` + fallback notification ถ้า `showNotification` ล้มเหลว (กรณี icon/badge ไม่ถูกต้องบน Android)
+    - notificationclick เพิ่ม error handling + logging
+    - bump `sw-version: 3`
+  - [src/components/pwa/service-worker-register.tsx](src/components/pwa/service-worker-register.tsx): 
+    - เพิ่ม `{ updateViaCache: "none" }` บังคับ browser ไม่ cache `sw.js`
+    - เรียก `reg.update()` ทันทีหลัง register (force check update)
+    - ฟัง `updatefound` + log ตอน SW อัปเดต
+  - ลบ `.next/` cache (`rm -rf .next`) เพื่อเคลียร์ build/dev cache ที่ปนกัน
+- **ไฟล์ที่แตะ:** `public/sw.js`, `src/components/pwa/service-worker-register.tsx`, `.next/`
+- **ขั้นตอนผู้ใช้:**
+  1. รีสตาร์ท `npm run dev` (cache ใหม่สด)
+  2. บน Android: เปิด Chrome DevTools (Remote Debugging) → Application → Service Workers → กด **Unregister** แล้วรีโหลดหน้า (SW จะ register ใหม่ v3)
+  3. ไปที่ Settings → การแจ้งเตือน → กด "เปิดการแจ้งเตือน" → "ส่งการแจ้งเตือนทดสอบ"
+  4. ถ้ายังไม่เด้ง: ตรวจสอบว่าเข้าผ่าน HTTPS proxy (`https://nallyz-dev.fe-grp.com`) ไม่ใช่ `http://...` และ Chrome มีสิทธิ์แจ้งเตือนใน Settings ของ Android
+
+### 2026-06-21 — ตรวจสอบ build หลังย้าย auth + แก้ env ให้ตรงกับ Auth.js v5
+- **เป้าหมาย:** ยืนยันว่าการย้ายไป NextAuth คอมไพล์ผ่าน และแก้ error `MissingSecret` ตอนรัน dev
+- **สิ่งที่ทำ:**
+  - รัน `npx tsc --noEmit` (ผ่าน), `npx prisma generate` (ผ่าน), `npx prisma db push` (DB in sync), `npm run build` (สำเร็จ — route `/api/auth/[...nextauth]` ขึ้น, route google เดิมหายแล้ว)
+  - แก้ [.env](.env): เปลี่ยนชื่อ env ให้ตรงกับ Auth.js v5 — `SESSION_SECRET` → `AUTH_SECRET`, `GOOGLE_CLIENT_ID` → `AUTH_GOOGLE_ID`, `GOOGLE_CLIENT_SECRET` → `AUTH_GOOGLE_SECRET`, เพิ่ม `AUTH_TRUST_HOST="true"` (custom domain หลัง proxy)
+- **ไฟล์ที่แตะ:** [.env](.env)
+- **ผลตรวจสอบ:** tsc/build ผ่าน. แก้ `MissingSecret` แล้ว — ต้อง **restart dev server** ให้โหลด env ใหม่
+- **ตามต่อ (manual):** อัปเดต redirect URI ใน Google Cloud Console เป็น `…/api/auth/callback/google`; smoke test login/logout/Google/RBAC; ตัดสินใจเรื่อง audit log LOGIN/LOGOUT (ย้ายไป Auth.js `events` หรือไม่)
+
+### 2026-06-21 — ย้าย auth ทั้งหมดไป NextAuth (Auth.js) v5
+- **เป้าหมาย:** แทนที่ custom session ด้วย NextAuth พร้อม Credentials (email/password) + Google provider โดยรักษา RBAC และ helper API (`requireUser`, `requireAdmin` ฯลฯ) เดิม
+- **สิ่งที่ทำ:**
+  - ติดตั้ง `next-auth@beta` + `@auth/prisma-adapter`
+  - สร้าง [src/auth.ts](src/auth.ts) กำหนด providers, callbacks (signIn/jwt/session), cookie name `spk_session`, pages
+  - สร้าง API route [src/app/api/auth/[...nextauth]/route.ts](src/app/api/auth/[...nextauth]/route.ts)
+  - ปรับ [prisma/schema.prisma](prisma/schema.prisma): เพิ่ม `emailVerified`, ทำ `passwordHash` optional, ลบ `Session` custom, เพิ่ม `Account`/`Session`/`VerificationToken` ของ Auth.js
+  - รีไรต์ [src/lib/auth/index.ts](src/lib/auth/index.ts) ให้ใช้ `auth()` จาก NextAuth แทน session custom
+  - แก้ [src/components/auth/login-form.tsx](src/components/auth/login-form.tsx) ใช้ `signIn("credentials")` แทน server action
+  - แก้ [src/app/(auth)/login/page.tsx](src/app/(auth)/login/page.tsx) ใช้ `auth()` redirect, แมป error ใหม่
+  - แก้ปุ่ม Google ให้เรียก `signIn("google")`
+  - แก้ [src/components/layout/user-menu.tsx](src/components/layout/user-menu.tsx) ใช้ `signOut()` จาก NextAuth
+  - ลบไฟล์ที่ไม่ใช้: `src/lib/auth/session.ts`, `src/lib/auth/google.ts`, `src/app/api/auth/google/*`, `logoutAction`, `loginAction`
+  - อัปเดต `.env.example`
+- **ไฟล์ที่แตะหลัก:** `src/auth.ts`, `src/app/api/auth/[...nextauth]/route.ts`, `prisma/schema.prisma`, `src/lib/auth/index.ts`, `src/components/auth/login-form.tsx`, `src/app/(auth)/login/page.tsx`, `src/components/layout/user-menu.tsx`, `src/server/actions/auth.actions.ts`, `src/lib/constants.ts`, `.env.example`
+- **ผลการตรวจสอบ:**
+  - `npx tsc --noEmit` ✅
+  - `npx prisma db push --force-reset` + `npm run db:seed` ✅
+  - `npm run build` 24 routes ✅
+- **ขั้นตอนผู้ใช้:** ตั้งค่า `.env` ใหม่ (`AUTH_SECRET`, `AUTH_URL`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`) → รีเซ็ต DB (`npx prisma migrate reset --force`) → `npm run db:seed` → รีสตาร์ท dev
+
+### 2026-06-21 — แก้ push error `VapidPkHashMismatch`
+- **ปัญหา:** ส่ง push แล้วได้ `status=400 body={"reason":"VapidPkHashMismatch"}` — subscription ถูกสร้างด้วย VAPID public key เก่า ไม่ตรงกับ key ปัจจุบันบนเซิร์ฟเวอร์
+- **แก้:**
+  - `push.service.ts` จับ `400 + VapidPkHashMismatch` แล้ว **ลบ subscription นั้นออก** เหมือน 404/410 (ให้ client สมัครใหม่ได้)
+  - เพิ่มตัวนับ `mismatch` ใน `PushResult` ส่งกลับไป UI
+  - `push-settings.tsx` แสดงข้อความเฉพาะ: “VAPID key เปลี่ยน — กดเปิดการแจ้งเตือนอีกครั้งเพื่อสมัครใหม่”
+- **ไฟล์ที่แตะ:** [src/server/services/push.service.ts](src/server/services/push.service.ts), [src/components/pwa/push-settings.tsx](src/components/pwa/push-settings.tsx)
+- **ผลการตรวจสอบ:** `npx tsc --noEmit` ✅ · `npm run build` 24 routes ✅
+- **ขั้นตอนผู้ใช้:** ตรวจสอบว่า `.env` มี `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` คู่กัน (สร้างใหม่ทั้งคู่ถ้าจำเป็น) → รีสตาร์ท dev/rebuild → กด “เปิดการแจ้งเตือน” ใหม่
+
+### 2026-06-21 — เพิ่ม Excel Sync สำหรับครู/นักเรียน/ห้อง/วิชา/ตารางสอน
+- **ฟีเจอร์:** เพิ่มเมนู **"Sync Excel"** ใน sidebar แอดมิน ไปยังหน้า `/admin/data-sync` สามารถดาวน์โหลดข้อมูลปัจจุบันเป็น `.xlsx` แล้วอัปโหลดกลับมา sync ได้
+- **รูปแบบการ sync:** Replace-all ตามไฟล์ — upsert ตาม natural key และลบข้อมูลที่ไม่มีในไฟล์ออก
+- **ไฟล์ Excel ที่ export:** แถวบนสุดเป็น header ชื่อคอลัมน์ (className, teacherCode ฯลฯ) + ล็อคแถว header + ใส่ autofilter
+- **Natural keys:** ครู=`teacherCode`, นักเรียน=`studentCode`, ห้องเรียน=`className`, วิชา=`subjectCode`, ตารางสอน=`className+day+period`
+- **ไฟล์ที่แตะ:**
+  - [src/lib/nav.ts](src/lib/nav.ts) + [src/components/layout/sidebar-nav.tsx](src/components/layout/sidebar-nav.tsx) — เมนูและไอคอน
+  - [src/app/(app)/admin/data-sync/page.tsx](src/app/(app)/admin/data-sync/page.tsx) — หน้าใหม่
+  - [src/components/admin/data-sync-page.tsx](src/components/admin/data-sync-page.tsx) — UI Tabs สำหรับ 5 entity พร้อม upload/download
+  - [src/components/admin/data-sync-button.tsx](src/components/admin/data-sync-button.tsx) — ปุ่มลัดจากหน้าจัดการ entity
+  - หน้า [admin/teachers](src/app/(app)/admin/teachers/page.tsx), [admin/students](src/app/(app)/admin/students/page.tsx), [admin/classes](src/app/(app)/admin/classes/page.tsx), [admin/subjects](src/app/(app)/admin/subjects/page.tsx), [admin/schedule](src/app/(app)/admin/schedule/page.tsx) — เพิ่มปุ่ม Sync Excel ใน PageHeader
+  - [src/server/services/admin.service.ts](src/server/services/admin.service.ts) — `export*`/`sync*` services
+  - [src/server/actions/admin.actions.ts](src/server/actions/admin.actions.ts) — `export*Action`/`sync*Action`
+- **ผลการตรวจสอบ:** `npx tsc --noEmit` ผ่าน ✅ · `npm run build` 24 routes ✅
+- **หมายเหตุ:** ยังไม่ได้เชื่อม Google Sheets ในขั้นตอนนี้ เนื่องจากเลือก Excel upload/download; สามารถต่อ Google Sheets API ภายหลังได้
+
+### 2026-06-21 — แก้ console error "Registration failed - push service error" บน Brave
+- **ปัญหา:** กด “เปิดการแจ้งเตือน” บน Brave แล้ว console แสดง `[push] subscribe error: "Registration failed - push service error" AbortError`
+- **สาเหตุ:** Brave บล็อก/ไม่สามารถเชื่อมต่อ push service ได้ (เกิดจากนโยบาย privacy/shield ของเบราว์เซอร์ ไม่ใช่บั๊กในโค้ด) — error นี้เป็น `AbortError` จาก `pushManager.subscribe()`
+- **แก้ไข:**
+  - จับ error “push service error”/AbortError แยกเป็น reason `push-service-error` แทนการ fallback เป็น `error` ทั่วไป ([src/components/pwa/use-push.ts](src/components/pwa/use-push.ts))
+  - เปลี่ยนการ log กรณีนี้จาก `console.error` เป็น `console.warn` เพื่อไม่ให้ console ขึ้น error ที่ไม่ใช่บั๊กแอป
+  - เพิ่มการตรวจจับ Brave (`navigator.brave.isBrave()` / UA fallback) ใน hook เพื่อให้ UI แสดงคำแนะนำเฉพาะ
+  - แสดง toast/ข้อความชี้เป้า: ปิด Brave Shields สำหรับเว็บนี้ หรือเปิด “Use Google services for push messaging” ใน `brave://settings/privacy` ([src/components/pwa/push-settings.tsx](src/components/pwa/push-settings.tsx), [src/components/pwa/push-manager.tsx](src/components/pwa/push-manager.tsx))
+- **ไฟล์ที่แตะ:** [src/components/pwa/use-push.ts](src/components/pwa/use-push.ts), [src/components/pwa/push-settings.tsx](src/components/pwa/push-settings.tsx), [src/components/pwa/push-manager.tsx](src/components/pwa/push-manager.tsx)
+- **ผลการตรวจสอบ:** `npx tsc --noEmit` ผ่าน ✅
+
+### 2026-06-21 — วินิจฉัยข้อผิดพลาด "Registration failed - push service error"
+- **ปัญหา:** Console แสดง error "Registration failed - push service error" เมื่อกดเปิดการแจ้งเตือน บน push-settings
+- **วินิจฉัยเบื้องต้น:** 
+  - Service worker file (`public/sw.js`) มีอยู่และตั้งค่าถูก (install/activate/push handlers ครบ)
+  - Error เกิดจาก `pushManager.subscribe()` ล้มเหลว ไม่ใช่จากการตรวจเช็ค secure/supported
+  - ข้อมูลที่ต้องได้รับจากผู้ใช้: 
+    1. URL ของแอป (HTTPS/localhost?)
+    2. ค่า `NEXT_PUBLIC_VAPID_PUBLIC_KEY` ตั้งค่าแล้วหรือ
+    3. VAPID key format (base64url 65 bytes?)
+- **ไฟล์ที่ตรวจสอบ:** [src/components/pwa/use-push.ts](src/components/pwa/use-push.ts) (hooks + logic), [src/components/pwa/push-settings.tsx](src/components/pwa/push-settings.tsx) (UI), [public/sw.js](public/sw.js) (service worker), [src/server/actions/push.actions.ts](src/server/actions/push.actions.ts) (server actions)
+- **ผลการตรวจสอบ:** โค้ด compile ได้ (`tsc` ✅), service worker ถูกต้อง ✅ — **ต้องรับข้อมูลเพิ่มเติมจากผู้ใช้** ก่อนสามารถแก้ไขได้
+
 ### 2026-06-21 — แอดมินจัดการตารางสอน: เพิ่มปุ่มแก้ไขและลบหลายรายการพร้อมกัน
 - **ปุ่มแก้ไขคาบสอนแต่ละแถว:** เพิ่มปุ่มปากกาบนตาราง [src/components/admin/schedules-table.tsx](src/components/admin/schedules-table.tsx) และ dialog แก้ไข [src/components/admin/edit-schedule-dialog.tsx](src/components/admin/edit-schedule-dialog.tsx) สำหรับแก้ไข ห้อง/วิชา/ครู/วัน/คาบ/ห้องเรียนได้
 - **เลือกหลายรายการ + ลบทีเดียว:** ตารางตารางสอนเปลี่ยนเป็น client table ที่รองรับ checkbox ต่อแถว, เลือกทั้งหมด, แถบ bulk action และลบแบบกลุ่มพร้อมกัน โดยใช้ action ใหม่ใน [src/server/actions/admin.actions.ts](src/server/actions/admin.actions.ts) และ service ใน [src/server/services/admin.service.ts](src/server/services/admin.service.ts)

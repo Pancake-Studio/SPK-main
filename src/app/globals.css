@@ -1,6 +1,7 @@
 @import "tailwindcss";
 /* Radix open/close, fade, zoom & slide animations (tailwindcss-animate for v4). */
 @import "tw-animate-css";
+@plugin "@tailwindcss/typography";
 
 /* next-themes toggles the `.dark` class on <html>; wire it into Tailwind v4. */
 @custom-variant dark (&:where(.dark, .dark *));

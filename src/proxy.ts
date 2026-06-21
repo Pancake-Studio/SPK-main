@@ -2,18 +2,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/constants";
 
 /**
- * Edge middleware: a fast first gate. It only checks for the *presence* of a
- * session cookie (it cannot hit the DB on the edge). Authoritative validation
- * and role checks happen in the server layouts via requireRole().
+ * Edge proxy (formerly "middleware"): a fast first gate. It only checks for the
+ * *presence* of a session cookie (it cannot hit the DB on the edge).
+ * Authoritative validation and role checks happen in the server layouts via
+ * requireRole().
  *
  * NOTE: we deliberately do NOT redirect /login away on cookie presence here —
  * a stale/expired cookie (e.g. after a db reset) would then trap the user on a
  * page that bounces back to "/" forever. The login page validates the session
  * against the DB (getCurrentUser) and redirects only a *real* signed-in user.
  */
-const PROTECTED_PREFIXES = ["/admin", "/teacher", "/student", "/settings"];
+const PROTECTED_PREFIXES = ["/admin", "/teacher", "/student", "/settings", "/announcements"];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
 
@@ -32,5 +33,11 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/teacher/:path*", "/student/:path*", "/settings/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/teacher/:path*",
+    "/student/:path*",
+    "/settings/:path*",
+    "/announcements/:path*",
+  ],
 };

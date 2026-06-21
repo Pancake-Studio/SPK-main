@@ -13,6 +13,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { AddScheduleDialog } from "@/components/admin/dialogs/add-schedule-dialog";
+import { DataSyncButton } from "@/components/admin/data-sync-button";
 import { ImportScheduleDialog } from "@/components/admin/dialogs/import-schedule-dialog";
 import { SchedulesTable, type ScheduleRow } from "@/components/admin/schedules-table";
 import { dayMeta } from "@/lib/timetable";
@@ -57,6 +58,7 @@ export default async function AdminSchedulePage() {
   return (
     <div>
       <PageHeader title="จัดการตารางสอน" description={`คาบสอนทั้งหมด ${schedules.length} คาบ`}>
+        <DataSyncButton tab="schedules" />
         <ImportScheduleDialog />
         <AddScheduleDialog
           classes={classOptions}

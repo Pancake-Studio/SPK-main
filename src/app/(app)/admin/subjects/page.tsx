@@ -4,6 +4,7 @@ import { listSubjects } from "@/server/services/admin.service";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { AddSubjectDialog } from "@/components/admin/dialogs/add-subject-dialog";
+import { DataSyncButton } from "@/components/admin/data-sync-button";
 import { SubjectTable, type SubjectRow } from "@/components/admin/subject-table";
 
 export const metadata = { title: "จัดการวิชา" };
@@ -15,6 +16,7 @@ export default async function AdminSubjectsPage() {
   return (
     <div>
       <PageHeader title="จัดการวิชา" description={`วิชาทั้งหมด ${subjects.length} วิชา`}>
+        <DataSyncButton tab="subjects" />
         <AddSubjectDialog />
       </PageHeader>
 

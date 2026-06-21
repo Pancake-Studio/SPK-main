@@ -1,7 +1,7 @@
-/* SPK Platform service worker — install + Web Push + click handling. */
-/* sw-version: 2 (PNG notification icon/badge — cross-platform render) */
+/* SPK Platform service worker — install + Web Push + click handling */
+/* sw-version: 3 — robust push handler + dev-safe fetch passthrough + Android fixes */
 
-self.addEventListener("install", () => {
+self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
@@ -9,33 +9,63 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// Minimal pass-through fetch handler (required for installability criteria).
-self.addEventListener("fetch", () => {});
+// Pass-through fetch handler. We deliberately do NOT cache anything;
+// this SW only exists for Web Push + PWA installability.
+// In Next.js dev mode the `_next` chunks must reach the dev server
+// unimpeded, so we bail out early for those.
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  // Never intercept Next.js dev/build chunks or the dev-server HMR socket
+  if (url.pathname.startsWith("/_next") || url.pathname === "/__webpack_hmr") {
+    return;
+  }
+  // Everything else falls through to the network automatically
+  // because we do not call event.respondWith().
+});
 
 self.addEventListener("push", (event) => {
-  let data = {};
+  console.log("[sw] push event received");
+  let payload = {};
   try {
-    data = event.data ? event.data.json() : {};
-  } catch {
-    data = { title: "SPK Platform", message: event.data ? event.data.text() : "" };
+    payload = event.data ? event.data.json() : {};
+    console.log("[sw] push payload:", payload);
+  } catch (parseErr) {
+    console.error("[sw] push payload parse error:", parseErr);
+    payload = {
+      title: "SPK Platform",
+      message: event.data ? event.data.text() : "New notification",
+    };
   }
 
-  const title = data.title || "SPK Platform";
+  const title = payload.title || "SPK Platform";
   const options = {
-    body: data.message || "",
-    icon: data.icon || "/icon-192.png",
+    body: payload.message || "",
+    icon: payload.icon || "/icon-192.png",
     badge: "/badge.png",
-    tag: data.tag || undefined,
-    renotify: Boolean(data.tag),
-    data: { url: data.url || "/dashboard" },
+    tag: payload.tag || undefined,
+    renotify: Boolean(payload.tag),
+    data: { url: payload.url || "/dashboard" },
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  console.log("[sw] showing notification:", title, options);
+
+  event.waitUntil(
+    self.registration
+      .showNotification(title, options)
+      .catch((err) => {
+        console.error("[sw] showNotification failed:", err);
+        // Fallback: try with minimal options (no badge/icon that might be invalid)
+        return self.registration.showNotification("SPK Platform", {
+          body: payload.message || "You have a new notification",
+        });
+      }),
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || "/dashboard";
+  const targetUrl = event.notification.data?.url || "/dashboard";
+  console.log("[sw] notification click, target:", targetUrl);
 
   event.waitUntil(
     self.clients
@@ -47,7 +77,12 @@ self.addEventListener("notificationclick", (event) => {
             return client.focus();
           }
         }
-        if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      })
+      .catch((err) => {
+        console.error("[sw] notificationclick error:", err);
       }),
   );
 });

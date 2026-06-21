@@ -39,6 +39,17 @@ import {
   deleteSchedules,
   bulkCreateSchedules,
   getImportLookups,
+  exportTeachers,
+  exportStudents,
+  exportClasses,
+  exportSubjects,
+  exportSchedules,
+  syncTeachers,
+  syncStudents,
+  syncClasses,
+  syncSubjects,
+  syncSchedules,
+  type SyncResult,
 } from "@/server/services/admin.service";
 import { notifyUsers } from "@/server/services/notification.service";
 import { NOTIFICATION_TYPES, ROLES } from "@/lib/constants";
@@ -352,6 +363,112 @@ export async function importSchedulesAction(
   return ok(`นำเข้าสำเร็จ ${inserted} คาบ${skipped ? ` (ข้าม ${skipped} แถวที่ไม่ถูกต้อง)` : ""}`);
 }
 
+/* ------------------------------ Excel Export ---------------------------- */
+
+type ExportResult =
+  | { ok: true; base64: string; filename: string }
+  | { ok: false; error: string };
+
+function bufferToBase64(buf: Buffer): string {
+  return Buffer.from(buf).toString("base64");
+}
+
+export async function exportTeachersAction(): Promise<ExportResult> {
+  await requireAdmin();
+  try {
+    const buf = await exportTeachers();
+    return { ok: true, base64: bufferToBase64(buf), filename: "teachers.xlsx" };
+  } catch {
+    return { ok: false, error: "สร้างไฟล์ครูไม่สำเร็จ" };
+  }
+}
+
+export async function exportStudentsAction(): Promise<ExportResult> {
+  await requireAdmin();
+  try {
+    const buf = await exportStudents();
+    return { ok: true, base64: bufferToBase64(buf), filename: "students.xlsx" };
+  } catch {
+    return { ok: false, error: "สร้างไฟล์นักเรียนไม่สำเร็จ" };
+  }
+}
+
+export async function exportClassesAction(): Promise<ExportResult> {
+  await requireAdmin();
+  try {
+    const buf = await exportClasses();
+    return { ok: true, base64: bufferToBase64(buf), filename: "classes.xlsx" };
+  } catch {
+    return { ok: false, error: "สร้างไฟล์ห้องเรียนไม่สำเร็จ" };
+  }
+}
+
+export async function exportSubjectsAction(): Promise<ExportResult> {
+  await requireAdmin();
+  try {
+    const buf = await exportSubjects();
+    return { ok: true, base64: bufferToBase64(buf), filename: "subjects.xlsx" };
+  } catch {
+    return { ok: false, error: "สร้างไฟล์วิชาไม่สำเร็จ" };
+  }
+}
+
+export async function exportSchedulesAction(): Promise<ExportResult> {
+  await requireAdmin();
+  try {
+    const buf = await exportSchedules();
+    return { ok: true, base64: bufferToBase64(buf), filename: "schedules.xlsx" };
+  } catch {
+    return { ok: false, error: "สร้างไฟล์ตารางสอนไม่สำเร็จ" };
+  }
+}
+
+/* ------------------------------- Excel Sync ----------------------------- */
+
+function syncMessage(label: string, r: SyncResult): string {
+  return `Sync ${label}: เพิ่ม ${r.added} แก้ไข ${r.updated} ลบ ${r.deleted}${r.skipped ? ` ข้าม ${r.skipped}` : ""}`;
+}
+
+export async function syncTeachersAction(rows: unknown[]): Promise<ActionState> {
+  await requireAdmin();
+  if (!Array.isArray(rows)) return fail("ข้อมูลไม่ถูกต้อง");
+  const res = await syncTeachers(rows as Record<string, unknown>[]);
+  revalidatePath("/admin/teachers");
+  return ok(syncMessage("ครู", res));
+}
+
+export async function syncStudentsAction(rows: unknown[]): Promise<ActionState> {
+  await requireAdmin();
+  if (!Array.isArray(rows)) return fail("ข้อมูลไม่ถูกต้อง");
+  const res = await syncStudents(rows as Record<string, unknown>[]);
+  revalidatePath("/admin/students");
+  return ok(syncMessage("นักเรียน", res));
+}
+
+export async function syncClassesAction(rows: unknown[]): Promise<ActionState> {
+  await requireAdmin();
+  if (!Array.isArray(rows)) return fail("ข้อมูลไม่ถูกต้อง");
+  const res = await syncClasses(rows as Record<string, unknown>[]);
+  revalidatePath("/admin/classes");
+  return ok(syncMessage("ห้องเรียน", res));
+}
+
+export async function syncSubjectsAction(rows: unknown[]): Promise<ActionState> {
+  await requireAdmin();
+  if (!Array.isArray(rows)) return fail("ข้อมูลไม่ถูกต้อง");
+  const res = await syncSubjects(rows as Record<string, unknown>[]);
+  revalidatePath("/admin/subjects");
+  return ok(syncMessage("วิชา", res));
+}
+
+export async function syncSchedulesAction(rows: unknown[]): Promise<ActionState> {
+  await requireAdmin();
+  if (!Array.isArray(rows)) return fail("ข้อมูลไม่ถูกต้อง");
+  const res = await syncSchedules(rows as Record<string, unknown>[]);
+  revalidatePath("/admin/schedule");
+  return ok(syncMessage("ตารางสอน", res));
+}
+
 /* ------------------------------ Announcements --------------------------- */
 
 export async function createAnnouncementAction(
@@ -371,6 +488,12 @@ export async function createAnnouncementAction(
     data: { ...parsed.data, authorId: admin.id },
   });
 
+  const plainBody = parsed.data.body
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
   const where =
     parsed.data.audience === "TEACHERS"
       ? { role: ROLES.TEACHER }
@@ -385,8 +508,8 @@ export async function createAnnouncementAction(
         ? NOTIFICATION_TYPES.EMERGENCY
         : NOTIFICATION_TYPES.ANNOUNCEMENT,
       title: parsed.data.isUrgent ? `⚠ ด่วน: ${parsed.data.title}` : parsed.data.title,
-      message: parsed.data.body.slice(0, 240),
-      linkUrl: null,
+      message: plainBody.slice(0, 240),
+      linkUrl: `/announcements/${announcement.id}`,
     },
   );
 

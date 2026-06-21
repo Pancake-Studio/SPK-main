@@ -4,6 +4,7 @@ import { listStudents, listClasses } from "@/server/services/admin.service";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { AddStudentDialog } from "@/components/admin/dialogs/add-student-dialog";
+import { DataSyncButton } from "@/components/admin/data-sync-button";
 import { StudentTable, type StudentRow } from "@/components/admin/student-table";
 
 export const metadata = { title: "จัดการนักเรียน" };
@@ -16,6 +17,7 @@ export default async function AdminStudentsPage() {
   return (
     <div>
       <PageHeader title="จัดการนักเรียน" description={`นักเรียนทั้งหมด ${students.length} คน`}>
+        <DataSyncButton tab="students" />
         <AddStudentDialog classes={classOptions} />
       </PageHeader>
 

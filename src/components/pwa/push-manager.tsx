@@ -16,6 +16,10 @@ function explain(r: Extract<SubscribeResult, { ok: false }>): string {
       return "ยังไม่ได้อนุญาตการแจ้งเตือน";
     case "unsupported":
       return "อุปกรณ์/เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน";
+    case "invalid-key":
+      return "รหัส VAPID ไม่ถูกต้องหรือยังไม่ได้ตั้งค่าในเซิร์ฟเวอร์";
+    case "push-service-error":
+      return "เบราว์เซอร์บล็อกการเชื่อมต่อ push service — ลองปิด Brave Shields หรือตรวจสอบสิทธิ์การแจ้งเตือน";
     default:
       return r.error ? `เปิดไม่สำเร็จ: ${r.error}` : "เปิดการแจ้งเตือนไม่สำเร็จ";
   }
@@ -49,10 +53,16 @@ export function PushManager() {
 
   async function onEnable() {
     setBusy(true);
+    console.log("[push-manager] user clicked enable button");
     const r = await subscribe();
+    console.log("[push-manager] subscribe result:", r);
     setBusy(false);
     if (r.ok) toast.success("เปิดการแจ้งเตือนบนอุปกรณ์นี้แล้ว");
-    else toast.error(explain(r));
+    else {
+      const msg = explain(r);
+      console.error("[push-manager] error message:", msg, "reason:", r.reason);
+      toast.error(msg);
+    }
   }
 
   if (dismissed) return null;

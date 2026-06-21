@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { GraduationCap, ShieldCheck, CalendarDays, ArrowLeftRight, TriangleAlert } from "lucide-react";
+import { auth } from "@/auth";
 import { LoginForm } from "@/components/auth/login-form";
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { Logo } from "@/components/layout/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { getCurrentUser } from "@/lib/auth";
 import { APP_NAME, SCHOOL_NAME, ROLE_HOME, type Role } from "@/lib/constants";
-import { isGoogleConfigured, allowedEmailDomain } from "@/lib/auth/google";
 
 export const metadata: Metadata = { title: "เข้าสู่ระบบ" };
 
@@ -18,10 +17,17 @@ const HIGHLIGHTS = [
   { icon: ShieldCheck, text: "ปลอดภัยด้วยสิทธิ์การเข้าถึงตามบทบาท" },
 ];
 
-const GOOGLE_ERRORS: Record<string, string> = {
-  google_unconfigured: "ระบบยังไม่ได้ตั้งค่า Google Sign-In",
-  google_state: "เซสชันหมดอายุหรือไม่ถูกต้อง กรุณาลองใหม่",
-  google_domain: `อนุญาตให้เข้าสู่ระบบด้วย Google เฉพาะอีเมล @${allowedEmailDomain()} เท่านั้น`,
+const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN ?? "suntisuk.ac.th";
+const GOOGLE_CONFIGURED = Boolean(
+  process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET,
+);
+
+const AUTH_ERRORS: Record<string, string> = {
+  CredentialsSignin: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+  OAuthCallback: "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่",
+  OAuthAccountNotLinked: "บัญชี Google นี้ยังไม่ได้เชื่อมกับระบบ",
+  Default: "เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่",
+  google_domain: `อนุญาตให้เข้าสู่ระบบด้วย Google เฉพาะอีเมล @${ALLOWED_DOMAIN} เท่านั้น`,
   google_notfound: "ไม่พบบัญชีนี้ในระบบ กรุณาติดต่อผู้ดูแลระบบ",
   google_inactive: "บัญชีนี้ถูกระงับการใช้งาน",
   google_error: "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่",
@@ -34,15 +40,19 @@ export default async function LoginPage({
 }) {
   const { error } = await searchParams;
 
-  // Only redirect a *validated* signed-in user (real DB check, not just the
-  // cookie). A stale/expired cookie falls through to the form so the user can
-  // actually sign back in instead of being bounced to "/".
-  const current = await getCurrentUser();
-  if (current) redirect(ROLE_HOME[current.role as Role] ?? "/");
+  // Only redirect a *validated* signed-in user. A stale/expired cookie falls
+  // through to the form so the user can actually sign back in.
+  let session = null;
+  try {
+    session = await auth();
+  } catch {
+    // stale/expired JWT → ignore and show login form
+  }
+  if (session?.user) redirect(ROLE_HOME[session.user.role as Role] ?? "/");
 
-  const googleEnabled = isGoogleConfigured();
-  const domain = allowedEmailDomain();
-  const googleError = error ? (GOOGLE_ERRORS[error] ?? null) : null;
+  const googleEnabled = GOOGLE_CONFIGURED;
+  const domain = ALLOWED_DOMAIN;
+  const authError = error ? (AUTH_ERRORS[error] ?? AUTH_ERRORS.Default) : null;
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
@@ -94,13 +104,13 @@ export default async function LoginPage({
               </p>
             </div>
 
-            {googleError && (
+            {authError && (
               <div
                 role="alert"
                 className="mb-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                <span>{googleError}</span>
+                <span>{authError}</span>
               </div>
             )}
 

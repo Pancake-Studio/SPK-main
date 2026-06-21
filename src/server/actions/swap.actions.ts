@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTeacherProfile, requireUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { createSwapSchema, swapDecisionSchema } from "@/lib/validations";
 import {
   createSwapRequest,
@@ -14,6 +15,11 @@ import {
   SwapError,
 } from "@/server/services/swap.service";
 import { fieldErrorsFromZod, fail, ok, type ActionState } from "./_helpers";
+
+async function teacherIdForUser(userId: string): Promise<string | null> {
+  const t = await db.teacher.findUnique({ where: { userId }, select: { id: true } });
+  return t?.id ?? null;
+}
 
 export async function createSwapAction(
   _prev: ActionState,
@@ -55,7 +61,7 @@ export async function decideSwapAction(
   const actor = {
     userId: user.id,
     role: user.role,
-    teacherId: user.teacher?.id ?? null,
+    teacherId: await teacherIdForUser(user.id),
   };
 
   const parsed = swapDecisionSchema.safeParse({
@@ -91,7 +97,7 @@ export async function cancelSwapAction(
   const actor = {
     userId: user.id,
     role: user.role,
-    teacherId: user.teacher?.id ?? null,
+    teacherId: await teacherIdForUser(user.id),
   };
 
   const id = String(formData.get("swapRequestId") ?? "");
@@ -114,7 +120,7 @@ export async function requestSwapCancelAction(
   formData: FormData,
 ): Promise<ActionState> {
   const user = await requireUser();
-  const actor = { userId: user.id, role: user.role, teacherId: user.teacher?.id ?? null };
+  const actor = { userId: user.id, role: user.role, teacherId: await teacherIdForUser(user.id) };
   const id = String(formData.get("swapRequestId") ?? "");
   if (!id) return fail("คำขอไม่ถูกต้อง");
 
@@ -136,7 +142,7 @@ export async function decideSwapCancelAction(
   formData: FormData,
 ): Promise<ActionState> {
   const user = await requireUser();
-  const actor = { userId: user.id, role: user.role, teacherId: user.teacher?.id ?? null };
+  const actor = { userId: user.id, role: user.role, teacherId: await teacherIdForUser(user.id) };
 
   const id = String(formData.get("swapRequestId") ?? "");
   const action = String(formData.get("action") ?? "");

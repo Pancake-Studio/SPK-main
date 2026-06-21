@@ -4,6 +4,7 @@ import { listClasses } from "@/server/services/admin.service";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { AddClassDialog } from "@/components/admin/dialogs/add-class-dialog";
+import { DataSyncButton } from "@/components/admin/data-sync-button";
 import { ClassTable, type ClassRow } from "@/components/admin/class-table";
 
 export const metadata = { title: "จัดการห้องเรียน" };
@@ -15,6 +16,7 @@ export default async function AdminClassesPage() {
   return (
     <div>
       <PageHeader title="จัดการห้องเรียน" description={`ห้องเรียนทั้งหมด ${classes.length} ห้อง`}>
+        <DataSyncButton tab="classes" />
         <AddClassDialog />
       </PageHeader>
 

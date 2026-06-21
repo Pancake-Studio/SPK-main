@@ -16,7 +16,36 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getInitials } from "@/lib/utils";
 import { roleLabel } from "@/lib/role";
-import { logoutAction } from "@/server/actions/auth.actions";
+import { signOut } from "next-auth/react";
+import { unsubscribePushAction } from "@/server/actions/push.actions";
+
+/**
+ * Remove this device's push subscription before signing out, so the user stops
+ * receiving OS notifications once logged out. Only this browser's subscription
+ * is removed — other devices where the user is still signed in keep theirs.
+ * Best-effort: never block logout if push cleanup fails.
+ */
+async function logout() {
+  try {
+    if ("serviceWorker" in navigator) {
+      // `serviceWorker.ready` never rejects; cap it so a missing/idle SW can't
+      // stall sign-out indefinitely.
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+      ]);
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        // Remove from the server first (still authenticated here), then locally.
+        await unsubscribePushAction(sub.endpoint).catch(() => {});
+        await sub.unsubscribe().catch(() => {});
+      }
+    }
+  } catch {
+    // ignore — push cleanup must not prevent sign-out
+  }
+  await signOut({ callbackUrl: "/login" });
+}
 
 export function UserMenu({
   name,
@@ -55,16 +84,13 @@ export function UserMenu({
           </a>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <form action={logoutAction}>
-          <button type="submit" className="w-full">
-            <DropdownMenuItem variant="destructive" asChild>
-              <span className="cursor-pointer">
-                <LogOut />
-                ออกจากระบบ
-              </span>
-            </DropdownMenuItem>
-          </button>
-        </form>
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={() => logout()}
+        >
+          <LogOut />
+          ออกจากระบบ
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
