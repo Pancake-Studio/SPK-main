@@ -9,6 +9,11 @@ import type {
   ClassInput,
   SubjectInput,
   ScheduleInput,
+  TeacherUpdateInput,
+  StudentUpdateInput,
+  ClassUpdateInput,
+  SubjectUpdateInput,
+  ScheduleUpdateInput,
 } from "@/lib/validations";
 
 const DEFAULT_PASSWORD = "password123";
@@ -94,8 +99,78 @@ export async function createTeacher(input: TeacherInput) {
 export async function deleteTeacher(teacherId: string) {
   const teacher = await db.teacher.findUnique({ where: { id: teacherId } });
   if (!teacher) return;
-  // Removing the user cascades to the teacher profile + sessions.
-  await db.user.delete({ where: { id: teacher.userId } });
+  const scheduleIds = (
+    await db.schedule.findMany({ where: { teacherId }, select: { id: true } })
+  ).map((s) => s.id);
+  // Clear swap requests tied to this teacher (as participant or via their slots)
+  // and their schedules first; then removing the user cascades teacher + sessions.
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: {
+        OR: [
+          { requesterId: teacherId },
+          { targetTeacherId: teacherId },
+          { sourceScheduleId: { in: scheduleIds } },
+          { targetScheduleId: { in: scheduleIds } },
+        ],
+      },
+    }),
+    db.schedule.deleteMany({ where: { teacherId } }),
+    db.user.delete({ where: { id: teacher.userId } }),
+  ]);
+}
+
+export async function updateTeacher(input: TeacherUpdateInput) {
+  const teacher = await db.teacher.findUnique({ where: { id: input.id }, select: { userId: true } });
+  if (!teacher) throw new Error("ไม่พบข้อมูลครู");
+  const updates: { passwordHash?: string } = {};
+  if (input.password) {
+    updates.passwordHash = await hashPassword(input.password);
+  }
+  await db.$transaction([
+    db.user.update({
+      where: { id: teacher.userId },
+      data: {
+        name: input.name,
+        email: input.email,
+        ...(input.password ? updates : {}),
+      },
+    }),
+    db.teacher.update({
+      where: { id: input.id },
+      data: {
+        teacherCode: input.teacherCode,
+        title: input.title || null,
+        department: input.department || null,
+        phone: input.phone || null,
+      },
+    }),
+  ]);
+}
+
+export async function deleteTeachers(ids: string[]) {
+  if (ids.length === 0) return 0;
+  const teachers = await db.teacher.findMany({ where: { id: { in: ids } }, select: { id: true, userId: true } });
+  if (teachers.length === 0) return 0;
+  const userIds = teachers.map((t) => t.userId);
+  const scheduleIds = (
+    await db.schedule.findMany({ where: { teacherId: { in: ids } }, select: { id: true } })
+  ).map((s) => s.id);
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: {
+        OR: [
+          { requesterId: { in: ids } },
+          { targetTeacherId: { in: ids } },
+          { sourceScheduleId: { in: scheduleIds } },
+          { targetScheduleId: { in: scheduleIds } },
+        ],
+      },
+    }),
+    db.schedule.deleteMany({ where: { teacherId: { in: ids } } }),
+    db.user.deleteMany({ where: { id: { in: userIds } } }),
+  ]);
+  return teachers.length;
 }
 
 /* -------------------------------- Students ------------------------------ */
@@ -128,6 +203,41 @@ export async function deleteStudent(studentId: string) {
   await db.user.delete({ where: { id: student.userId } });
 }
 
+export async function updateStudent(input: StudentUpdateInput) {
+  const student = await db.student.findUnique({ where: { id: input.id }, select: { userId: true } });
+  if (!student) throw new Error("ไม่พบข้อมูลนักเรียน");
+  const updates: { passwordHash?: string } = {};
+  if (input.password) {
+    updates.passwordHash = await hashPassword(input.password);
+  }
+  await db.$transaction([
+    db.user.update({
+      where: { id: student.userId },
+      data: {
+        name: input.name,
+        email: input.email,
+        ...(input.password ? updates : {}),
+      },
+    }),
+    db.student.update({
+      where: { id: input.id },
+      data: {
+        studentCode: input.studentCode,
+        classId: input.classId,
+      },
+    }),
+  ]);
+}
+
+export async function deleteStudents(ids: string[]) {
+  if (ids.length === 0) return 0;
+  const students = await db.student.findMany({ where: { id: { in: ids } }, select: { userId: true } });
+  if (students.length === 0) return 0;
+  const userIds = students.map((s) => s.userId);
+  await db.user.deleteMany({ where: { id: { in: userIds } } });
+  return students.length;
+}
+
 /* --------------------------------- Classes ------------------------------ */
 
 export function listClasses() {
@@ -147,8 +257,52 @@ export function createClass(input: ClassInput) {
   });
 }
 
-export function deleteClass(id: string) {
-  return db.class.delete({ where: { id } });
+export async function updateClass(input: ClassUpdateInput) {
+  return db.class.update({
+    where: { id: input.id },
+    data: {
+      className: input.className,
+      gradeLevel: input.gradeLevel,
+      room: input.room || null,
+    },
+  });
+}
+
+export async function deleteClass(id: string) {
+  const scheduleIds = (
+    await db.schedule.findMany({ where: { classId: id }, select: { id: true } })
+  ).map((s) => s.id);
+  // Remove swap requests on this class's slots first; Class→Schedule cascades.
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: {
+        OR: [
+          { sourceScheduleId: { in: scheduleIds } },
+          { targetScheduleId: { in: scheduleIds } },
+        ],
+      },
+    }),
+    db.class.delete({ where: { id } }),
+  ]);
+}
+
+export async function deleteClasses(ids: string[]) {
+  if (ids.length === 0) return 0;
+  const scheduleIds = (
+    await db.schedule.findMany({ where: { classId: { in: ids } }, select: { id: true } })
+  ).map((s) => s.id);
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: {
+        OR: [
+          { sourceScheduleId: { in: scheduleIds } },
+          { targetScheduleId: { in: scheduleIds } },
+        ],
+      },
+    }),
+    db.class.deleteMany({ where: { id: { in: ids } } }),
+  ]);
+  return ids.length;
 }
 
 /* -------------------------------- Subjects ------------------------------ */
@@ -170,8 +324,54 @@ export function createSubject(input: SubjectInput) {
   });
 }
 
-export function deleteSubject(id: string) {
-  return db.subject.delete({ where: { id } });
+export async function updateSubject(input: SubjectUpdateInput) {
+  return db.subject.update({
+    where: { id: input.id },
+    data: {
+      subjectName: input.subjectName,
+      subjectCode: input.subjectCode,
+      colorHex: input.colorHex || null,
+    },
+  });
+}
+
+export async function deleteSubject(id: string) {
+  const scheduleIds = (
+    await db.schedule.findMany({ where: { subjectId: id }, select: { id: true } })
+  ).map((s) => s.id);
+  // Remove swap requests on this subject's slots, then the slots, then the subject.
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: {
+        OR: [
+          { sourceScheduleId: { in: scheduleIds } },
+          { targetScheduleId: { in: scheduleIds } },
+        ],
+      },
+    }),
+    db.schedule.deleteMany({ where: { subjectId: id } }),
+    db.subject.delete({ where: { id } }),
+  ]);
+}
+
+export async function deleteSubjects(ids: string[]) {
+  if (ids.length === 0) return 0;
+  const scheduleIds = (
+    await db.schedule.findMany({ where: { subjectId: { in: ids } }, select: { id: true } })
+  ).map((s) => s.id);
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: {
+        OR: [
+          { sourceScheduleId: { in: scheduleIds } },
+          { targetScheduleId: { in: scheduleIds } },
+        ],
+      },
+    }),
+    db.schedule.deleteMany({ where: { subjectId: { in: ids } } }),
+    db.subject.deleteMany({ where: { id: { in: ids } } }),
+  ]);
+  return ids.length;
 }
 
 /* -------------------------------- Schedules ----------------------------- */
@@ -200,8 +400,43 @@ export function createSchedule(input: ScheduleInput) {
   });
 }
 
-export function deleteSchedule(id: string) {
-  return db.schedule.delete({ where: { id } });
+export async function updateSchedule(input: ScheduleUpdateInput) {
+  return db.schedule.update({
+    where: { id: input.id },
+    data: {
+      classId: input.classId,
+      subjectId: input.subjectId,
+      teacherId: input.teacherId,
+      day: input.day,
+      period: input.period,
+      room: input.room || null,
+    },
+  });
+}
+
+export async function deleteSchedule(id: string) {
+  // A schedule may be referenced by swap requests (source/target). Remove those
+  // first (their swap logs cascade) so the FK constraint doesn't block deletion.
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: { OR: [{ sourceScheduleId: id }, { targetScheduleId: id }] },
+    }),
+    db.schedule.delete({ where: { id } }),
+  ]);
+}
+
+/** Bulk-delete several schedules at once (admin multi-select). */
+export async function deleteSchedules(ids: string[]) {
+  if (ids.length === 0) return 0;
+  await db.$transaction([
+    db.swapRequest.deleteMany({
+      where: {
+        OR: [{ sourceScheduleId: { in: ids } }, { targetScheduleId: { in: ids } }],
+      },
+    }),
+    db.schedule.deleteMany({ where: { id: { in: ids } } }),
+  ]);
+  return ids.length;
 }
 
 /** Bulk insert from CSV/Excel import; returns count inserted. */

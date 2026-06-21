@@ -1,6 +1,8 @@
+# ทุกการทำงานต้องบันทึกลงในนี้
+
 # SPK School Platform — บันทึกความคืบหน้า (Progress Log)
 
-> อัปเดตล่าสุด: 2026-06-18 · สถานะ: **Phase 1 เสร็จสมบูรณ์** — ผ่าน `tsc`, `next build`, และ smoke-test ทุกหน้า/ทุกบทบาท ✅
+> อัปเดตล่าสุด: 2026-06-21 · สถานะ: **Phase 1 เสร็จสมบูรณ์** — ผ่าน `tsc`, `next build`, และ smoke-test ทุกหน้า/ทุกบทบาท ✅
 
 แอปพลิเคชันบริหารจัดการโรงเรียน (School Management Web App) ตามสเปกใน
 [docs/PROMPT.md](docs/PROMPT.md) และ [docs/DESIGN.md](docs/DESIGN.md)
@@ -12,7 +14,7 @@
 | ส่วน | เทคโนโลยี |
 |------|-----------|
 | Framework | **Next.js 16** (App Router) + React 19 + TypeScript (monolith) |
-| Styling | **Tailwind CSS v4** + ธีม Purple/Yellow + Light/Dark (`next-themes`) |
+| Styling | **Tailwind CSS v4** + ธีม Purple /Yellow + Light/Dark (`next-themes`) |
 | UI | shadcn-style components + **Radix UI** primitives + **Framer Motion** + **Lucide** |
 | Database | **Prisma ORM 6** + **SQLite** (dev) / พร้อมสลับเป็น **PostgreSQL** (prod) |
 | Validation | **Zod 4** + React Hook Form |
@@ -145,6 +147,108 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 
 > กติกา: ทุกครั้งที่มีการแก้ไข/เพิ่มงาน ให้ **เพิ่มรายการใหม่ไว้บนสุด** ของหัวข้อนี้
 > (วันที่ · สรุปสิ่งที่ทำ · ไฟล์/ส่วนที่แตะ · ผลการตรวจสอบ)
+
+### 2026-06-21 — แอดมินจัดการตารางสอน: เพิ่มปุ่มแก้ไขและลบหลายรายการพร้อมกัน
+- **ปุ่มแก้ไขคาบสอนแต่ละแถว:** เพิ่มปุ่มปากกาบนตาราง [src/components/admin/schedules-table.tsx](src/components/admin/schedules-table.tsx) และ dialog แก้ไข [src/components/admin/edit-schedule-dialog.tsx](src/components/admin/edit-schedule-dialog.tsx) สำหรับแก้ไข ห้อง/วิชา/ครู/วัน/คาบ/ห้องเรียนได้
+- **เลือกหลายรายการ + ลบทีเดียว:** ตารางตารางสอนเปลี่ยนเป็น client table ที่รองรับ checkbox ต่อแถว, เลือกทั้งหมด, แถบ bulk action และลบแบบกลุ่มพร้อมกัน โดยใช้ action ใหม่ใน [src/server/actions/admin.actions.ts](src/server/actions/admin.actions.ts) และ service ใน [src/server/services/admin.service.ts](src/server/services/admin.service.ts)
+- **เชื่อมหน้าแอดมิน:** [src/app/(app)/admin/schedule/page.tsx](src/app/(app)/admin/schedule/page.tsx) ใช้ตารางใหม่และส่งข้อมูล occupied slots เข้า dialog เพื่อป้องกันคาบซ้ำในห้อง/วันเดียวกัน
+- **แก้ typing ที่เกี่ยวข้องกับการแก้ไขครู:** ปรับ [src/components/admin/teacher-table.tsx](src/components/admin/teacher-table.tsx) และ [src/app/(app)/admin/teachers/page.tsx](src/app/(app)/admin/teachers/page.tsx) เพื่อให้ dialog แก้ไขครู compile ได้อย่างถูกต้อง
+- **ตรวจสอบ:** `npx tsc --noEmit` ผ่าน ✅
+
+### 2026-06-21 — กันคาบชนตอนเพิ่มตาราง + ตารางครูแสดงทั้งสองคาบที่สลับ (พร้อมไฮไลท์)
+- **กันเลือกคาบที่ถูกใช้แล้ว (เพิ่มคาบสอน):** [add-schedule-dialog.tsx](src/components/admin/dialogs/add-schedule-dialog.tsx) เป็น interactive — เลือกห้อง+วัน แล้ว dropdown "คาบ" จะ **disable คาบที่ห้องนั้นใช้ไปแล้ว** (ติด label "ไม่ว่าง"); ส่ง `occupied` (`${classId}__${day}`→periods[]) จาก [admin/schedule page](src/app/(app)/admin/schedule/page.tsx). [select-field.tsx](src/components/admin/select-field.tsx) เพิ่ม controlled value/onChange + per-option disabled + hint. (backend ยังมี unique `(classId,day,period)` กันซ้ำชั้นสุดท้าย)
+- **🔑 ตารางครูแสดงทั้งสองคาบที่สลับ (ตามที่ผู้ใช้ย้ำ):** เดิม (day,period)-swap ทำให้คาบเดิมของครูในตารางตัวเอง "ว่าง" (เพราะคาบนั้นครูอีกฝ่ายสอนแล้ว) → ผู้ใช้มองว่าผิด. เพิ่ม `getTeacherScheduleWithSwaps(teacherId)` ([schedule.service.ts](src/server/services/schedule.service.ts)) = คาบของตัวเอง + **คาบคู่สลับ (counterpart)** จาก swap ที่ active (APPROVED/CANCEL_REQUESTED) ที่ครูคนนั้นมีส่วนร่วม → [teacher/schedule page](src/app/(app)/teacher/schedule/page.tsx) ใช้อันนี้แสดงผล (ไฮไลท์ทั้งคู่ผ่าน getSwapMarks) ส่วน mySlots ของ dialog ใช้ `getTeacherSchedule` (เฉพาะคาบตัวเอง). dashboard now-next ใช้ของเดิม (เฉพาะที่ตัวเองสอนจริง)
+- **ตรวจสอบ:** `tsc` สะอาด ✅ · **รันจริงตรงตัวอย่างผู้ใช้** (M.4/1): A=Math@MONP1, B=Biology@MONP6 → หลังสลับ ตาราง A = Math@P6 + Biology(ของ B)@P1, ตาราง B = Biology@P1 + Math(ของ A)@P6, ไฮไลท์ทั้งคู่ ✅ (ไม่รัน `next build` เพื่อไม่ชน dev ของผู้ใช้ — dev จะ HMR เอง, รีโหลดหน้า)
+
+### 2026-06-21 — แอดมินตารางสอน: เลือกหลายรายการ (ติ๊ก) + ลบทีเดียว
+- หน้า [admin/schedule](src/app/(app)/admin/schedule/page.tsx) เปลี่ยนตารางเป็น client component [schedules-table.tsx](src/components/admin/schedules-table.tsx): เพิ่มคอลัมน์ checkbox ต่อแถว + checkbox "เลือกทั้งหมด" (header, รองรับ indeterminate) + แถบ bulk action เมื่อเลือก ≥1 ("เลือกแล้ว n รายการ" + "ลบที่เลือก (n)" + "ยกเลิกการเลือก"). คงปุ่มลบรายตัวไว้
+- Backend: `deleteSchedules(ids[])` ([admin.service.ts](src/server/services/admin.service.ts)) ลบ SwapRequest ที่อ้างถึงก่อน แล้ว `deleteMany` ใน $transaction; action `deleteSchedulesAction(ids[])` ([admin.actions.ts](src/server/actions/admin.actions.ts)) + revalidate
+- **ตรวจสอบ:** `tsc` สะอาด ✅ · `next build` 23 routes ✅ (⚠️ ต้องรีสตาร์ท dev เพื่อเห็นผล)
+
+### 2026-06-21 — #1 ยกเลิกการสลับที่อนุมัติแล้ว (revert workflow) + แก้บั๊กลบคาบติด FK
+- **#1 ยกเลิกการสลับที่อนุมัติแล้ว:** เพิ่ม status `CANCEL_REQUESTED`/`REVERTED` + ฟิลด์ `cancelRequestedById/cancelDecidedById/cancelRespondedAt` ใน SwapRequest (db push + generate). ใน [swap.service.ts](src/server/services/swap.service.ts): `requestSwapCancellation` (ครูฝ่ายใดฝ่ายหนึ่งขอ → แจ้งครูอีกฝ่าย), `approveSwapCancellation` (อีกฝ่ายอนุมัติ → **สลับ (day,period) กลับ** ด้วย helper `exchangeDayPeriod` → ตารางครู+นักเรียนกลับเป็นเดิม + แจ้งนักเรียนทั้งห้อง), `rejectSwapCancellation` (กลับเป็น APPROVED). แจ้งเตือนครบ push+in-app+history ผ่าน `createNotification` (เพิ่ม type `SWAP_CANCEL_REQUEST`/`SWAP_CANCELLED` + ไอคอน)
+- **ไฮไลต์:** `getSwapMarks` filter `status in [APPROVED, CANCEL_REQUESTED]` → REVERTED ไม่โชว์ไฮไลต์ (ตามสเปก "ลบ/มาร์คว่ายกเลิก")
+- **UI:** [swap-list.tsx](src/components/swap/swap-list.tsx) รับ `viewerTeacherId` → ปุ่ม "ขอยกเลิกการสลับ" (คาบ APPROVED ที่ตนเกี่ยวข้อง), ปุ่ม "อนุมัติ/ไม่อนุมัติการยกเลิก" (ครูอีกฝ่าย), ข้อความ "รออีกฝ่ายอนุมัติ" (ฝ่ายขอ); StatusBadge เพิ่ม 2 สถานะ. actions ใหม่ [swap.actions.ts](src/server/actions/swap.actions.ts) `requestSwapCancelAction`/`decideSwapCancelAction`. ส่ง `viewerTeacherId` จากหน้า [teacher/swaps](src/app/(app)/teacher/swaps/page.tsx); `mapSwapToClient`/`ClientSwap` เพิ่ม requesterId/targetTeacherId/cancelRequestedById
+- **แก้บั๊กที่ผู้ใช้เจอ:** ลบคาบในแอดมินติด FK (`Schedule.delete` P2003 เพราะมี SwapRequest อ้างถึง) → [admin.service.ts](src/server/services/admin.service.ts) `deleteSchedule` ลบ SwapRequest ที่อ้าง source/target ก่อน (logs cascade) แล้วค่อยลบคาบ ใน $transaction. **เสริม:** ทำแบบเดียวกันกับ `deleteClass`/`deleteSubject`/`deleteTeacher` (กัน P2003 ชุดเดียวกัน) — ผู้ใช้ยังเจอ error ซ้ำเพราะ dev server เก่า (chunk `_1xtz2zw` เดิม) **ต้องรีสตาร์ท `npm run dev`**
+- **ตรวจสอบ:** `tsc` สะอาด ✅ · `next build` 23 routes ✅ · **รันจริง lifecycle เต็ม**: approve→สลับ, requestCancel→`CANCEL_REQUESTED` (ไฮไลต์ยังอยู่), approveCancel→ตารางกลับเดิม + status `REVERTED` ✅ · ยืนยัน filter ตัด REVERTED ออกจากไฮไลต์ (marks ที่เหลือมาจาก swap APPROVED ค้างของเทสต์เก่า — ลบทิ้งแล้ว 5 รายการ) ✅
+- ⚠️ ผู้ใช้ต้อง **รีสตาร์ท `npm run dev`** (เจอ "failed-to-find-server-action" เพราะ action ใหม่/บันเดิลเก่า). เทสต์รุ่นแรกของ swap-engine ที่ cleanup ไม่สำเร็จ ทิ้ง swap ค้างไว้ — เคลียร์แล้ว; ถ้าต้องการ baseline สะอาด รัน `npm run db:seed` (ล้าง login/push ของ demo ด้วย)
+- ⏭️ เหลือ: #4+#8 จัดการวิชา (โหมด "จัดการ session" คง Subject catalog), #9 พักกลางวัน + ตั้งเวลาคาบ global (SchoolSettings)
+
+### 2026-06-21 — Swap engine v2: ย้ายทั้ง session + ห้องเดียวกันเท่านั้น + แสดงรหัสวิชา (สเปกชุดที่ 2 #2/#3/#5/#6/#7)
+- **เปลี่ยนกฎจาก "ระดับชั้นเดียวกัน" → "ห้องเรียนเดียวกันเป๊ะ" (#2):** [swap.service.ts](src/server/services/swap.service.ts) `createSwapRequest` เช็ค `source.classId === target.classId` (เดิมเช็ค gradeLevel). Frontend [swap-request-dialog.tsx](src/components/swap/swap-request-dialog.tsx) กรอง `selectableSlot` ด้วย classId + แสดงเฉพาะครูที่สอนห้องนั้น (`eligibleTeachers`)
+- **🔑 แก้บั๊กร้ายแรง (#3/#6/#7 + Core Rule): สลับทั้ง session ไม่ใช่แค่ teacherId.** `approveSwapRequest` เปลี่ยนจาก "สลับ teacherId ของ 2 แถว" → **สลับ (day, period) ของ 2 แถว** ในห้องเดียวกัน ด้วย $transaction + พักชั่วคราว (`__SWAP_<id>`) กัน unique `(classId,day,period)` ชน. ผลคือ teacher/subject/subjectCode/room/classId เดินทางไปกับแถวของตัวเองอัตโนมัติ → **ไม่มีช่องว่าง ไม่มีวิชา/ห้องค้าง**. เดิม teacherId-swap ทำให้คาบต้นทางหายจากตารางครู + วิชาไม่ย้าย (ตรงกับอาการที่ผู้ใช้รายงาน)
+- **รหัสวิชา (#5):** `slotLabel` ใส่ `subjectCode` (→ แจ้งเตือน + รายละเอียดคำขอผ่าน `mapSwapToClient`), แสดง subjectCode ใน [timetable-grid.tsx](src/components/timetable/timetable-grid.tsx) + [week-cards.tsx](src/components/timetable/week-cards.tsx) (ครู+นักเรียน)
+- **ไฮไลต์ใหม่ตามโมเดลใหม่:** `getSwapMarks`/`SwapMark` เปลี่ยนเป็นตำแหน่งเดิม (originalDay/originalPeriod) — แถวหนึ่งหลังสลับอยู่ที่ตำแหน่งเดิมของคู่ → tooltip "สลับคาบ: เดิมอยู่ [วัน] คาบ [n]"
+- **ตรวจสอบ:** `tsc` สะอาด ✅ · `next build` ผ่าน 23 routes ✅ · **รันจริง create+approve กับ M.4/1**: MATH MON P2 ↔ PHYS MON P1 → หลังสลับ MATH=MON P1, PHYS=MON P2, subject/room/class/teacher ครบ ไม่มีช่องว่าง ✅ · swap mark คืน original ถูกต้อง ✅ · ข้าม class ถูก reject ✅ (กฎ same-classroom). คืนค่าข้อมูลเดิมหลังเทสต์แล้ว
+- ⏭️ **คิวที่เหลือจากสเปกชุด 2+3:** #1 ยกเลิกการสลับที่อนุมัติแล้ว (workflow ขออนุมัติย้อนกลับ), #4 Teacher→หลายวิชา (one-to-many) + #8 จัดการวิชา (เพิ่ม/แก้ พร้อมครู+ห้อง) — **ต้องตัดสินใจเรื่องโมเดล Subject** (ตอนนี้ Subject เป็น catalog ส่วนครู/ห้องอยู่ที่ Schedule; สเปกอยากให้ Subject ถือครู+ห้อง), #9 พักกลางวัน + ตั้งเวลาคาบ/ระยะเวลาแบบ global (ต้องมี SchoolSettings model)
+
+### 2026-06-21 — Swap correctness: บังคับแลกข้ามชั้นไม่ได้ (#4) + ตัวเลือกคาบแบบกริด (#3) + ไฮไลต์คาบที่สลับ (#7/#9)
+- บริบท: ผู้ใช้ส่งสเปกใหญ่ (10 ข้อ). วิเคราะห์แล้ว ~60% มีอยู่แล้ว. ตัดสินใจร่วมกับผู้ใช้: **คงสแตกเดิม** (SQLite/SSE/Web Push ไม่ย้าย Postgres/Socket.IO/FCM), **อีเมลใช้ dev-log transport แบบเสียบปลั๊กได้** (ไว้ทำตอน #1/#2), **เริ่มที่ swap correctness ก่อน**
+- **#4 แลกเฉพาะระดับชั้นเดียวกัน (เช่น ม.5/1 ↔ ม.5/2, ห้าม ม.5/1 ↔ ม.4/1):**
+  - Backend (กันแม้ client ถูก bypass): [swap.service.ts](src/server/services/swap.service.ts) `createSwapRequest` เพิ่มเช็ค `source.class.gradeLevel === target.class.gradeLevel` ไม่ตรง → โยน `SwapError`
+  - เพิ่ม `gradeLevel` เข้า `TimetableSlot` ([timetable.ts](src/lib/timetable.ts)) + mapper `toSlot` ([schedule.service.ts](src/server/services/schedule.service.ts))
+- **#3 เลือกคาบแบบกริดคลิกได้ (เลิกใช้ dropdown):** เขียน [swap-request-dialog.tsx](src/components/swap/swap-request-dialog.tsx) ใหม่ — ขั้น 1 คลิกเลือกคาบตัวเองจาก `TimetableGrid` (interactive), ขั้น 2 แสดงเฉพาะคาบครูอื่น **ระดับชั้นเดียวกัน** เป็นการ์ดคลิกได้ (กรองด้วย gradeLevel ฝั่ง client), ถ้าไม่มี → ข้อความบอกชัด
+- **#7/#9 ไฮไลต์คาบที่สลับ + tooltip:** เพิ่ม `getSwapMarks(scheduleIds)` ([swap.service.ts](src/server/services/swap.service.ts)) สร้าง map จาก swap ที่ APPROVED (คาบต้นทาง→ครูเดิม=ผู้ขอ, คาบเป้าหมาย→ครูเดิม=ครูปลายทาง). `TimetableGrid` ([timetable-grid.tsx](src/components/timetable/timetable-grid.tsx)) + `WeekCards` ([week-cards.tsx](src/components/timetable/week-cards.tsx)) รับ `swapMarks` → ป้าย "สลับคาบ" สีเหลือง + ring + `title` tooltip (ครูเดิม→ครูปัจจุบัน + วันที่). เดินสายในหน้า [teacher/schedule](src/app/(app)/teacher/schedule/page.tsx) + [student/schedule](src/app/(app)/student/schedule/page.tsx) พร้อม legend
+- **ตรวจสอบ:** `tsc` สะอาด ✅ · `next build` ผ่าน 23 routes ✅ · ข้อมูลจริงมีระดับ M.4/M.5/M.6 (ครูตัวอย่างมีคาบระดับเดียวกัน 54, ต่างระดับ 78) ✅ · **รันจริงผ่าน service: createSwapRequest ข้ามชั้น M.4↔M.5 ถูก reject** ตามข้อความกฎ ✅
+- **ปรับ flow ตามที่ผู้ใช้ขอ (เลือกครูก่อน → โชว์ตารางครูคนนั้นทั้งสัปดาห์ให้เลือกคาบ):** เปลี่ยนฝั่งเป้าหมายจาก "การ์ดรวมทุกครู" เป็น **Select เลือกครู → แสดง `TimetableGrid` ตารางเต็มของครูคนนั้น** ([swap-request-dialog.tsx](src/components/swap/swap-request-dialog.tsx)). คาบระดับเดียวกัน = คลิกได้, คาบต่างระดับ = แสดงแต่จาง/กดไม่ได้ + tooltip (เพิ่ม props `selectableSlot`/`blockedHint` ใน [timetable-grid.tsx](src/components/timetable/timetable-grid.tsx)); ถ้าครูไม่มีคาบระดับนั้น → ขึ้นข้อความบอก. กฎ same-grade ยังบังคับทั้ง UI + backend. **ตรวจสอบ:** `tsc` สะอาด ✅
+- ⏭️ ที่เหลือตามสเปก: **#1** backup email + email verification, **#2** forgot password (รออีเมล dev-log transport), และเอกสารสถาปัตยกรรมเต็ม (architecture/diagram/scalability)
+
+### 2026-06-21 — ทำ Web Push → Service Worker ให้ทำงานข้ามแพลตฟอร์ม (Windows/iOS/Android) + ซ่อมบิลด์
+- ✅ **ผลสรุป: ผู้ใช้ยืนยันการแจ้งเตือนทำงานแล้ว** (รวมบนอุปกรณ์ผ่านโดเมน proxy). ปิด dev server บนพอร์ต 3000 ตามที่ผู้ใช้ขอ (port 3000 = down, ไม่มี process)
+- **อาการที่ผู้ใช้แจ้ง:** การแจ้งเตือนเด้งเฉพาะ `localhost:3000` บน Microsoft Edge เท่านั้น
+- **วินิจฉัย (root cause หลายชั้น):**
+  1. **บิลด์พัง:** [next.config.ts](next.config.ts) ห่อด้วย `next-pwa` (`swSrc: "src/sw.js"`) — next-pwa เลิก maintain แล้ว ฉีด **webpack** config ที่ชนกับ Turbopack ของ Next 16 → `next build` ล้ม (`WorkerError: Call retries were exceeded`) และ next-pwa จะ **เขียนทับ** `public/sw.js` (ตัว hand-written) + ลงทะเบียน SW ซ้ำกับ [ServiceWorkerRegister](src/components/pwa/service-worker-register.tsx). นี่คือเหตุผลที่ไฟล์ `src/sw.js` มีอยู่ (เป็น swSrc ของ next-pwa)
+  2. **ไอคอนเป็น SVG ล้วน:** Chrome/Edge/Android **ไม่เรนเดอร์** ไอคอนแจ้งเตือนที่เป็น SVG, `badge` ของ Android ต้องเป็น PNG โมโนโครม, iOS ต้องมี `apple-touch-icon` PNG จึงติดตั้ง PWA ได้ (iOS push ต้องติดตั้งลง home screen ก่อน) → แจ้งเตือนเด้งแต่ดูเหมือนพัง/ไอคอนหาย
+  3. **เหตุที่เด้งแค่ localhost:** `localhost` เป็น secure context **เฉพาะบนเครื่อง dev** — อุปกรณ์อื่น (มือถือ/พีซีอื่น) ต้องเข้าผ่านโดเมน reverse-proxy `https://nallyz-dev.fe-grp.com` แล้วสมัคร (subscribe) บนโดเมนนั้น (origin นี้ถูก allow ใน next.config serverActions อยู่แล้ว)
+- **แก้:**
+  - ลบ `next-pwa` ออกจาก [next.config.ts](next.config.ts) + [package.json](package.json) → PWA เป็นแบบ manual ล้วน (SW static ที่ [public/sw.js](public/sw.js) + register เอง + manifest จาก [app/manifest.ts](src/app/manifest.ts)); ลบไฟล์ขยะ `src/sw.js`
+  - สร้างไอคอน PNG จาก SVG ด้วย sharp ([scripts/gen-icons.mjs](scripts/gen-icons.mjs) — รันซ้ำได้): `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` (พื้นทึบ #7C3AED), `badge.png` (กลีฟขาวพื้นโปร่ง) + [public/badge.svg](public/badge.svg)
+  - เดินสายไอคอน: [manifest.ts](src/app/manifest.ts) (PNG 192/512/maskable + svg fallback), [layout.tsx](src/app/layout.tsx) (`apple-touch-icon.png` 180 + png icons), [public/sw.js](public/sw.js) (`icon:/icon-192.png`, `badge:/badge.png`, bump `sw-version: 2` เพื่อบังคับ SW อัปเดตที่ไคลเอนต์)
+  - **ซ่อม type-check ที่บล็อกบิลด์:** `@types/minimatch@6.0.0` เป็น stub ว่าง (ไม่มี `index.d.ts`, ถูกดึงผ่าน `@types/glob`, มาจากการ reinstall ด้วย bun) → `TS2688`. แก้โดย pin เป็น `5.1.2` (ตัวสุดท้ายที่มี types จริง) ทั้งใน devDependencies และ `overrides` ของ [package.json](package.json)
+- **ตรวจสอบ:**
+  - `next build` (Turbopack) — **ผ่าน, 23 routes** ✅ (เดิมล้มด้วย WorkerError)
+  - ส่ง push จริงผ่าน [scripts/pushtest.mjs](scripts/pushtest.mjs) (`--dns-result-order=ipv4first`) → **statusCode 201 ทั้ง 2 subscription** (WNS/Edge) ✅
+  - เสิร์ฟจริงบน dev server: `/sw.js /manifest.webmanifest /icon-192.png /icon-512.png /apple-touch-icon.png /badge.png /icon-maskable-512.png` = **200 + content-type ถูกต้อง** (PNG = image/png), manifest อ้าง PNG, sw.js เป็น v2 ✅
+- **สิ่งที่ผู้ใช้ต้องทำเพื่อทดสอบบนมือถือ:** เปิด `https://nallyz-dev.fe-grp.com` บนเครื่องนั้น (อย่าใช้ localhost) → Settings → "เปิดการแจ้งเตือน" → "ส่งการแจ้งเตือนทดสอบ". **iOS:** ต้อง "Add to Home Screen" แล้วเปิดจากไอคอนก่อน (iOS 16.4+) จึงสมัคร push ได้. แนะนำรีสตาร์ท `npm run dev` ให้รับ next.config ใหม่
+- **ตามต่อ — แก้ ChunkLoadError (`Unexpected end of input`):** `.next` cache เสีย เพราะรัน `next build` (โปรดักชัน) ทับ `.next` ตัวเดียวกับที่ `next dev` กำลังใช้ + bun reinstall เปลี่ยน node_modules ใต้เซิร์ฟเวอร์ที่รันอยู่ → chunk ถูกตัดครึ่ง. แก้: kill dev → `rm -rf .next` → `npm run dev` ใหม่. **ตรวจสอบ:** server ขึ้นสะอาด (Ready 6.3s, มี IPv4 marker), `/`=200, `/sw.js`+ไอคอน=200, `/settings`,`/dashboard`=307 (redirect login ตามคาด), log ไม่มี error ✅. บทเรียน: อย่ารัน `next build` ขณะ `next dev` ใช้ `.next` เดียวกัน
+- **ตามต่อ — แก้ hydration mismatch ที่หน้า Settings:** ปุ่ม "เปิดการแจ้งเตือน"/"ส่งทดสอบ" มี attribute `disabled` ไม่ตรง (server `disabled=""` vs client `disabled={false}`) เพราะ `usePush` คำนวณ `supported` จาก `window` **ตอน render** → SSR=false, client=true. แก้โดย gate `supported` ด้วย flag `mounted` ([use-push.ts](src/components/pwa/use-push.ts)) → server + client-render-แรก ได้ false เท่ากัน (ปุ่ม disabled ตรงกัน) แล้วค่อย flip เป็นค่าจริงหลัง mount. **ตรวจสอบ:** `tsc` สะอาด ✅
+- **ตามต่อ — iPhone ไม่เด้งขออนุญาตแจ้งเตือน:** บน iOS API Web Push (`Notification`/`PushManager`) มี **เฉพาะตอนเปิดเป็น PWA ที่ติดตั้งแล้ว** — ในแท็บ Safari ปกติ API ไม่มี เลยขอ permission ไม่ได้ (ปุ่มถูก disable). เพิ่มการตรวจจับ iOS-ยังไม่ติดตั้ง ([use-push.ts](src/components/pwa/use-push.ts) `iosNeedsInstall` = iOS/iPadOS + ไม่ใช่ standalone + ยัง unsupported) แล้วโชว์แบนเนอร์/ข้อความสอน "แชร์ → เพิ่มไปยังหน้าจอโฮม → เปิดจากไอคอน" ใน [push-manager.tsx](src/components/pwa/push-manager.tsx) (แดชบอร์ด) + [push-settings.tsx](src/components/pwa/push-settings.tsx) (เดิมแท็บ Safari ไม่โชว์อะไรเลย). **ตรวจสอบ:** `tsc` สะอาด ✅ · ยืนยัน lucide-react export `Share`/`Plus` มีจริง ✅
+
+### 2026-06-19 — เคลียร์ console warning ของ Recharts (width(-1)/height(-1))
+- อาการ: `[browser] The width(-1) and height(-1) of chart should be greater than 0 ...` (ซ้ำ ๆ)
+- สาเหตุ: `ResponsiveContainer` ของ Recharts วัดขนาด parent ตอนเรนเดอร์รอบแรก ก่อน layout มีขนาดจริง → ได้ -1 (กราฟแสดงได้ปกติ แต่ขึ้น warning รก console)
+- แก้: [swap-chart.tsx](src/components/admin/swap-chart.tsx) — เรนเดอร์ `<ResponsiveContainer>` เฉพาะหลัง mount (gate ด้วย state) โดยคง `<div className="h-64 w-full">` เป็น placeholder จองที่ไว้ (ไม่เกิด layout shift / hydration-safe)
+- **ตรวจสอบ:** `tsc` (เฉพาะ source) สะอาด ✅ — error เดียวที่เหลือคือไฟล์ generated `.next/dev/types/routes.d.ts` ที่ถูกตัดตอนตอน kill dev server จะถูกสร้างใหม่เมื่อรันอีกครั้ง
+
+### 2026-06-19 — แก้บั๊กมือถือ "กดอะไรไม่ได้หลัง login" (hydration mismatch จาก timeAgo)
+- อาการ: บนมือถือ หลัง login กดปุ่มอะไรไม่ได้เลย
+- วินิจฉัยจาก dev log: `[browser] Uncaught Error: Hydration failed ... server rendered text didn't match` — diff `14 วินาทีที่ผ่านมา` (server) vs `13 วินาทีที่ผ่านมา` (client) ที่ [notification-feed.tsx](src/components/notifications/notification-feed.tsx)
+- **Root cause:** `timeAgo()` ([lib/utils.ts](src/lib/utils.ts)) คำนวณเวลาแบบ "กี่วินาทีที่แล้ว" จาก `Date.now()` → SSR กับ client เรนเดอร์ห่างกันชั่วขณะ → ข้อความไม่ตรง → React โยน hydration error → **dev error overlay เต็มจอ บังคลิกทั้งหน้า**. มือถือเป็นบ่อยกว่าเพราะ latency SSR→hydration นานกว่า (ข้ามเส้นวินาที) ส่วน desktop localhost เร็วกว่ามักอยู่วินาทีเดียวกัน. กระทบทุกหน้าเพราะ `NotificationBell` ใน header ก็ใช้ `timeAgo`
+- แก้: เพิ่มคอมโพเนนต์ [src/components/time-ago.tsx](src/components/time-ago.tsx) (`<TimeAgo>`) — เรนเดอร์ค่า server ด้วย `suppressHydrationWarning` แล้ว re-render หลัง mount + refresh ทุก 30s. แทนที่ `timeAgo(...)` ใน 3 client component: notification-feed, [notification-bell.tsx](src/components/notifications/notification-bell.tsx), [swap-list.tsx](src/components/swap/swap-list.tsx). (หน้า admin/announcements เป็น server component → ปลอดภัยอยู่แล้ว ไม่แตะ)
+- ตรวจ client components อื่นที่ใช้ `new Date()`: timetable now-next/timetable-grid ใช้ `useState<Date|null>(null)` + set ใน effect → ปลอดภัย
+- **ตรวจสอบ:** `tsc` ✅ · รีสตาร์ท dev สะอาด (ไม่มี edge error, มี IPv4 marker) ✅ · ดึง session มาเปิด `/student/notifications` = 200 เรนเดอร์เป็น `<span>` ของ `<TimeAgo>` (เลิกใช้ `<p>` เดิม), log ไม่มี hydration error ✅
+
+### 2026-06-19 — แทน next-themes ด้วย ThemeProvider เอง (เลิก React-19 script warning)
+- อาการ: Console error `Encountered a script tag while rendering React component` ที่ [theme-provider.tsx](src/components/theme-provider.tsx) (next-themes 0.4.6 = ล่าสุดแล้ว แต่ inject `<script>` จาก client component → React 19 เตือน)
+- แก้: เขียน ThemeProvider เองแบบเล็ก ๆ ([theme-provider.tsx](src/components/theme-provider.tsx)) + script กัน FOUC ฝั่ง server ([src/lib/theme.ts](src/lib/theme.ts) `themeInitScript`) ใส่ใน [layout.tsx](src/app/layout.tsx) (server-rendered → ไม่โดน warning). `useTheme()` API เดิม (theme/resolvedTheme/setTheme) → [theme-toggle.tsx](src/components/layout/theme-toggle.tsx) + [sonner.tsx](src/components/ui/sonner.tsx) เปลี่ยน import มาจาก `@/components/theme-provider`
+- รองรับ system theme + ฟัง `prefers-color-scheme` + sync ข้ามแท็บ + เก็บใน localStorage key `theme` (เข้ากันได้กับของเดิม)
+- **ตรวจสอบ:** `tsc` ✅ · build/boot ไม่มี error ✅ (warning หายตอน client โหลด — ผู้ใช้ยืนยันใน console)
+
+### 2026-06-19 — เจอ root cause push ไม่เด้ง: WSL2 IPv6 timeout → บังคับ IPv4
+- อาการ: "ไม่เห็นแจ้งเตือนที่คอมเลย" — log โชว์ `[push] send failed status=?` (ไม่มี HTTP status)
+- วินิจฉัย: ดึง subscription จาก DB มายิงเองด้วย [scripts/pushtest.mjs](scripts/pushtest.mjs) → `AggregateError [ETIMEDOUT]` ตอน connect `wns2-bl2p.notify.windows.com` (เบราว์เซอร์ที่ใช้คือ **Edge/WNS**). `curl` เข้าโฮสต์นี้ได้ 404 แต่ Node timeout
+- **Root cause:** Node "Happy Eyeballs" ลองต่อ **IPv6 ก่อน** แต่ IPv6 ของ WSL2 route ไม่ได้ → ค้างจน timeout เงียบ ๆ (กระทบทั้ง Web Push และ Google OAuth token/JWKS ฝั่ง server)
+- ยืนยัน: รัน script ด้วย `--dns-result-order=ipv4first --no-network-family-autoselection` → **ส่งสำเร็จ statusCode 201** (เด้งจริงบนเครื่อง)
+- แก้: เพิ่ม [src/instrumentation.ts](src/instrumentation.ts) + [src/instrumentation-node.ts](src/instrumentation-node.ts) — ตอน boot (nodejs runtime) เรียก `dns.setDefaultResultOrder("ipv4first")` + `net.setDefaultAutoSelectFamily(false)` (แยกไฟล์ node ออกมา import เฉพาะ runtime nodejs เพื่อไม่ให้ Edge build พัง)
+- **ตรวจสอบ:** `tsc` ✅ · รีสตาร์ท dev: log โชว์ `Compiling instrumentation Node.js` + `[instrumentation] ... forcing IPv4` ไม่มี edge-runtime error ✅ · script ยิงจริง = 201 ✅
+- หมายเหตุ: instrumentation โหลดตอน boot → **ต้องรีสตาร์ท `npm run dev`** (รีสตาร์ทให้แล้ว). ถ้าได้ 201 แล้วยังไม่เห็น → ตั้งค่า Windows Notifications / Edge อนุญาต localhost
+
+### 2026-06-19 — แก้บั๊ก "กดปุ่มเข้าสู่ระบบไม่ได้" (ติดกับดัก /login)
+- อาการ: หน้าแรกโชว์ปุ่ม "เข้าสู่ระบบ" แต่กดแล้วไม่ไปไหน, log มีแต่ `GET /` ซ้ำ ๆ ไม่มี `GET /login`
+- สาเหตุ (root cause): [middleware.ts](src/middleware.ts) เด้ง `/login` → `/` โดยเช็คแค่ **การมีอยู่ของ cookie** (เช็ค DB บน edge ไม่ได้). ถ้ามี `spk_session` cookie ที่หมดอายุ/ใช้ไม่ได้ (พบบ่อยหลังรัน `db:seed` ซึ่งล้างตาราง Session) → หน้าแรกเรียก `getCurrentUser()` (เช็ค DB จริง) ได้ null จึงโชว์ปุ่ม login แต่พอกด → middleware เห็น cookie ค้าง → เด้งกลับ `/` วน → เข้า /login ไม่ได้เลย
+- แก้: ลบ logic เด้ง `/login` ออกจาก middleware + เอา `/login` ออกจาก matcher → ย้ายการเด้ง "ล็อกอินอยู่แล้ว" ไปไว้ใน [login/page.tsx](src/app/(auth)/login/page.tsx) ที่ `getCurrentUser()` เช็ค DB จริง (cookie ค้าง = null → โชว์ฟอร์ม, ผู้ใช้จริง → เด้งไป `ROLE_HOME`)
+- **ตรวจสอบ:** `tsc` ✅ · รีสตาร์ท dev + curl: `stale-cookie /login` = **200** (เดิม 307→/) , `no-cookie /login` = 200, `/` = 200 ✅
+- หมายเหตุ: middleware ถูก bundle ตอนเซิร์ฟเวอร์เริ่ม → **ต้องรีสตาร์ท `npm run dev`** ถึงจะมีผล (รีสตาร์ทให้แล้ว)
 
 ### 2026-06-19 — แก้ push ไม่เด้งบนเครื่อง (observability + self-test)
 - ปัญหา: ทุก trigger แจ้งเตือน "คนอื่น" (ทดสอบคนเดียวเลยไม่เห็น) + error ถูกกลืนหมด ไม่มี log → วินิจฉัยไม่ได้

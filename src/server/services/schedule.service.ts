@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import type { TimetableSlot } from "@/lib/timetable";
-import type { DayKey } from "@/lib/constants";
+import { SWAP_STATUS, type DayKey } from "@/lib/constants";
 
 const scheduleInclude = {
   subject: true,
@@ -16,7 +16,7 @@ type ScheduleWithRelations = {
   period: number;
   room: string | null;
   subject: { subjectName: string; subjectCode: string; colorHex: string | null };
-  class: { id: string; className: string };
+  class: { id: string; className: string; gradeLevel: string };
   teacher: { id: string; user: { name: string } };
 };
 
@@ -33,6 +33,7 @@ export function toSlot(s: ScheduleWithRelations): TimetableSlot {
     teacherName: s.teacher.user.name,
     classId: s.class.id,
     className: s.class.className,
+    gradeLevel: s.class.gradeLevel,
   };
 }
 
@@ -46,6 +47,42 @@ export async function getTeacherSchedule(
     orderBy: [{ day: "asc" }, { period: "asc" }],
   });
   return rows.map(toSlot);
+}
+
+/** A teacher's weekly timetable INCLUDING the swapped-in counterpart periods.
+ *  After a swap, teacher A still teaches their own (moved) period, but they also
+ *  want to SEE the partner period — now taught by teacher B at A's old slot —
+ *  highlighted. So we merge in, for each active swap A is part of, the partner
+ *  schedule (the side A does not teach). Both ends get highlighted via swapMarks. */
+export async function getTeacherScheduleWithSwaps(
+  teacherId: string,
+): Promise<TimetableSlot[]> {
+  const own = await getTeacherSchedule(teacherId);
+  const ownIds = new Set(own.map((s) => s.id));
+
+  const swaps = await db.swapRequest.findMany({
+    where: {
+      status: { in: [SWAP_STATUS.APPROVED, SWAP_STATUS.CANCEL_REQUESTED] },
+      OR: [{ requesterId: teacherId }, { targetTeacherId: teacherId }],
+    },
+    include: {
+      sourceSchedule: { include: scheduleInclude },
+      targetSchedule: { include: scheduleInclude },
+    },
+  });
+
+  const extras: TimetableSlot[] = [];
+  const seen = new Set<string>();
+  for (const sw of swaps) {
+    for (const sch of [sw.sourceSchedule, sw.targetSchedule]) {
+      // The counterpart is the side this teacher does NOT currently teach.
+      if (sch.teacherId !== teacherId && !ownIds.has(sch.id) && !seen.has(sch.id)) {
+        seen.add(sch.id);
+        extras.push(toSlot(sch));
+      }
+    }
+  }
+  return [...own, ...extras];
 }
 
 /** All timetable slots for a class (what a student sees). */

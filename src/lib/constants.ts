@@ -22,12 +22,15 @@ export const ROLE_HOME: Record<Role, string> = {
   STUDENT: "/student",
 };
 
-/** Swap request lifecycle. */
+/** Swap request lifecycle.
+ *  PENDING → APPROVED → (CANCEL_REQUESTED → REVERTED) | REJECTED | CANCELLED */
 export const SWAP_STATUS = {
   PENDING: "PENDING",
   APPROVED: "APPROVED",
   REJECTED: "REJECTED",
   CANCELLED: "CANCELLED",
+  CANCEL_REQUESTED: "CANCEL_REQUESTED", // approved swap, cancellation awaiting the other teacher
+  REVERTED: "REVERTED", // cancellation approved → schedules restored to original
 } as const;
 export type SwapStatus = (typeof SWAP_STATUS)[keyof typeof SWAP_STATUS];
 
@@ -36,6 +39,8 @@ export const NOTIFICATION_TYPES = {
   SWAP_REQUEST: "SWAP_REQUEST",
   SWAP_APPROVED: "SWAP_APPROVED",
   SWAP_REJECTED: "SWAP_REJECTED",
+  SWAP_CANCEL_REQUEST: "SWAP_CANCEL_REQUEST",
+  SWAP_CANCELLED: "SWAP_CANCELLED",
   SCHEDULE_CHANGED: "SCHEDULE_CHANGED",
   ANNOUNCEMENT: "ANNOUNCEMENT",
   EMERGENCY: "EMERGENCY",

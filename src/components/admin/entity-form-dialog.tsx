@@ -30,13 +30,15 @@ export function EntityFormDialog({
   title,
   description,
   triggerLabel,
+  trigger,
   action,
   children,
   submitLabel = "บันทึก",
 }: {
   title: string;
   description?: string;
-  triggerLabel: string;
+  triggerLabel?: string;
+  trigger?: React.ReactNode;
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   children: Children;
   submitLabel?: string;
@@ -58,10 +60,12 @@ export function EntityFormDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          {triggerLabel}
-        </Button>
+        {trigger ?? (
+          <Button>
+            <Plus />
+            {triggerLabel}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

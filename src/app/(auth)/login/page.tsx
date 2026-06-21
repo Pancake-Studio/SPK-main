@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { GraduationCap, ShieldCheck, CalendarDays, ArrowLeftRight, TriangleAlert } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { Logo } from "@/components/layout/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { APP_NAME, SCHOOL_NAME } from "@/lib/constants";
+import { getCurrentUser } from "@/lib/auth";
+import { APP_NAME, SCHOOL_NAME, ROLE_HOME, type Role } from "@/lib/constants";
 import { isGoogleConfigured, allowedEmailDomain } from "@/lib/auth/google";
 
 export const metadata: Metadata = { title: "เข้าสู่ระบบ" };
@@ -31,6 +33,13 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+
+  // Only redirect a *validated* signed-in user (real DB check, not just the
+  // cookie). A stale/expired cookie falls through to the form so the user can
+  // actually sign back in instead of being bounced to "/".
+  const current = await getCurrentUser();
+  if (current) redirect(ROLE_HOME[current.role as Role] ?? "/");
+
   const googleEnabled = isGoogleConfigured();
   const domain = allowedEmailDomain();
   const googleError = error ? (GOOGLE_ERRORS[error] ?? null) : null;

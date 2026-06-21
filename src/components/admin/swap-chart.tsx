@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import {
   Bar,
   BarChart,
@@ -27,6 +28,12 @@ export function SwapChart({ data }: { data: Record<string, number> }) {
   }));
   const total = rows.reduce((a, r) => a + r.value, 0);
 
+  // Recharts' ResponsiveContainer measures its parent on render; mounting it
+  // only after the client has laid out the page avoids the "width(-1)/height(-1)"
+  // warning (and any SSR/hydration size mismatch). The placeholder reserves space.
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+
   if (total === 0) {
     return (
       <EmptyState
@@ -39,6 +46,7 @@ export function SwapChart({ data }: { data: Record<string, number> }) {
 
   return (
     <div className="h-64 w-full">
+      {mounted && (
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={rows} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
           <XAxis
@@ -70,6 +78,7 @@ export function SwapChart({ data }: { data: Record<string, number> }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 }

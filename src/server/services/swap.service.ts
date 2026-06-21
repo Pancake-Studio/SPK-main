@@ -20,11 +20,11 @@ const swapInclude = {
 function slotLabel(s: {
   day: string;
   period: number;
-  subject: { subjectName: string };
+  subject: { subjectName: string; subjectCode: string };
   class: { className: string };
 }) {
   const d = dayMeta(s.day);
-  return `${d?.label ?? s.day} คาบ ${s.period} (${s.subject.subjectName} · ${s.class.className})`;
+  return `${d?.labelTh ?? s.day} คาบ ${s.period} (${s.subject.subjectCode} ${s.subject.subjectName} · ห้อง ${s.class.className})`;
 }
 
 async function classStudentUserIds(classId: string) {
@@ -33,6 +33,18 @@ async function classStudentUserIds(classId: string) {
     select: { userId: true },
   });
   return students.map((s) => s.userId);
+}
+
+type SlotPos = { id: string; day: string; period: number };
+type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/** Exchange two same-class rows' (day, period). Parks the first row at a temp
+ *  day so the unique (classId, day, period) constraint can't trip mid-swap. The
+ *  whole session (teacher/subject/room/class) travels with its own row. */
+async function exchangeDayPeriod(tx: Tx, a: SlotPos, b: SlotPos) {
+  await tx.schedule.update({ where: { id: a.id }, data: { day: `__SWAP_${a.id.slice(0, 8)}` } });
+  await tx.schedule.update({ where: { id: b.id }, data: { day: a.day, period: a.period } });
+  await tx.schedule.update({ where: { id: a.id }, data: { day: b.day, period: b.period } });
 }
 
 /* ------------------------------------------------------------------ */
@@ -62,6 +74,14 @@ export async function createSwapRequest(input: {
   }
   if (target.teacherId === input.requesterTeacherId) {
     throw new SwapError("ไม่สามารถแลกกับคาบของตัวเองได้");
+  }
+  // Core business rule (#2): swaps are only allowed between periods of the EXACT
+  // same classroom (e.g. 4/1 ↔ 4/1, never 4/1 ↔ 4/2). Enforced server-side so an
+  // invalid request is rejected even if the client filter is bypassed.
+  if (source.classId !== target.classId) {
+    throw new SwapError(
+      `แลกได้เฉพาะคาบของห้องเรียนเดียวกัน — คาบของคุณเป็นห้อง "${source.class.className}" แต่คาบเป้าหมายเป็นห้อง "${target.class.className}"`,
+    );
   }
 
   // Block duplicate pending requests for the same pair.
@@ -135,77 +155,68 @@ export async function approveSwapRequest(swapRequestId: string, actor: Actor) {
   if (!swap) throw new SwapError("ไม่พบคำขอแลกคาบ");
   assertCanDecide(actor, swap);
 
+  const src = swap.sourceSchedule;
+  const tgt = swap.targetSchedule;
+  // Whole-session swap (#3/#6/#7): exchange the two rows' (day, period). Every
+  // other field (teacher, subject, subjectCode, room, classId) travels with its
+  // own row automatically — nothing is copied, so nothing can go stale/empty.
   const before = {
-    source: { id: swap.sourceSchedule.id, teacherId: swap.sourceSchedule.teacherId },
-    target: { id: swap.targetSchedule.id, teacherId: swap.targetSchedule.teacherId },
+    source: { id: src.id, day: src.day, period: src.period },
+    target: { id: tgt.id, day: tgt.day, period: tgt.period },
   };
-  // Swap: each slot keeps its subject/class/day/period; only the teacher moves.
-  const newSourceTeacher = swap.targetSchedule.teacherId;
-  const newTargetTeacher = swap.sourceSchedule.teacherId;
+  const after = {
+    source: { id: src.id, day: tgt.day, period: tgt.period },
+    target: { id: tgt.id, day: src.day, period: src.period },
+  };
 
-  await db.$transaction([
-    db.schedule.update({
-      where: { id: swap.sourceScheduleId },
-      data: { teacherId: newSourceTeacher },
-    }),
-    db.schedule.update({
-      where: { id: swap.targetScheduleId },
-      data: { teacherId: newTargetTeacher },
-    }),
-    db.swapRequest.update({
+  await db.$transaction(async (tx) => {
+    await exchangeDayPeriod(
+      tx,
+      { id: src.id, day: src.day, period: src.period },
+      { id: tgt.id, day: tgt.day, period: tgt.period },
+    );
+    await tx.swapRequest.update({
       where: { id: swap.id },
       data: {
         status: SWAP_STATUS.APPROVED,
         decidedById: actor.userId,
         respondedAt: new Date(),
       },
-    }),
-    db.swapLog.create({
+    });
+    await tx.swapLog.create({
       data: {
         swapRequestId: swap.id,
         action: "APPROVED",
         actorId: actor.userId,
         beforeJson: JSON.stringify(before),
-        afterJson: JSON.stringify({
-          source: { id: swap.sourceScheduleId, teacherId: newSourceTeacher },
-          target: { id: swap.targetScheduleId, teacherId: newTargetTeacher },
-        }),
+        afterJson: JSON.stringify(after),
       },
-    }),
-    db.auditLog.create({
+    });
+    await tx.auditLog.create({
       data: {
         userId: actor.userId,
         action: "SWAP_APPROVED",
         entity: "SwapRequest",
         entityId: swap.id,
       },
-    }),
-  ]);
+    });
+  });
 
   // Notify the requester.
   await createNotification({
     userId: swap.requester.user.id,
     type: NOTIFICATION_TYPES.SWAP_APPROVED,
     title: "คำขอแลกคาบได้รับการอนุมัติ",
-    message: `${swap.targetTeacher.user.name} อนุมัติการแลก ${slotLabel(swap.sourceSchedule)} กับ ${slotLabel(swap.targetSchedule)}`,
+    message: `${swap.targetTeacher.user.name} อนุมัติการสลับ ${slotLabel(src)} กับ ${slotLabel(tgt)}`,
     linkUrl: "/teacher/swaps",
   });
 
-  // Notify affected students in both classes.
-  const [srcStudents, tgtStudents] = await Promise.all([
-    classStudentUserIds(swap.sourceSchedule.classId),
-    classStudentUserIds(swap.targetSchedule.classId),
-  ]);
-  await notifyUsers(srcStudents, {
+  // Both periods belong to the SAME classroom (#2), so notify that one class.
+  const students = await classStudentUserIds(src.classId);
+  await notifyUsers(students, {
     type: NOTIFICATION_TYPES.SCHEDULE_CHANGED,
     title: "ตารางเรียนมีการเปลี่ยนแปลง",
-    message: `${slotLabel(swap.sourceSchedule)} เปลี่ยนครูผู้สอนเป็น ${swap.targetTeacher.user.name}`,
-    linkUrl: "/student/schedule",
-  });
-  await notifyUsers(tgtStudents, {
-    type: NOTIFICATION_TYPES.SCHEDULE_CHANGED,
-    title: "ตารางเรียนมีการเปลี่ยนแปลง",
-    message: `${slotLabel(swap.targetSchedule)} เปลี่ยนครูผู้สอนเป็น ${swap.requester.user.name}`,
+    message: `${slotLabel(src)} และ ${slotLabel(tgt)} ถูกสลับเวลาเรียน`,
     linkUrl: "/student/schedule",
   });
 
@@ -281,6 +292,197 @@ export async function cancelSwapRequest(swapRequestId: string, actor: Actor) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Cancellation of an APPROVED swap (#1)                              */
+/* ------------------------------------------------------------------ */
+
+function participants(swap: { requesterId: string; targetTeacherId: string }) {
+  return [swap.requesterId, swap.targetTeacherId];
+}
+
+/** A participant teacher requests to undo an already-approved swap. The OTHER
+ *  teacher must then approve or reject the cancellation. */
+export async function requestSwapCancellation(swapRequestId: string, actor: Actor) {
+  const swap = await db.swapRequest.findUnique({
+    where: { id: swapRequestId },
+    include: swapInclude,
+  });
+  if (!swap) throw new SwapError("ไม่พบคำขอแลกคาบ");
+  if (swap.status !== SWAP_STATUS.APPROVED) {
+    throw new SwapError("ขอยกเลิกได้เฉพาะการสลับที่อนุมัติแล้วเท่านั้น");
+  }
+  if (!actor.teacherId || !participants(swap).includes(actor.teacherId)) {
+    throw new SwapError("เฉพาะครูที่เกี่ยวข้องกับการสลับนี้เท่านั้นที่ขอยกเลิกได้");
+  }
+
+  const otherTeacherId =
+    actor.teacherId === swap.requesterId ? swap.targetTeacherId : swap.requesterId;
+  const otherUserId =
+    actor.teacherId === swap.requesterId
+      ? swap.targetTeacher.user.id
+      : swap.requester.user.id;
+  const me =
+    actor.teacherId === swap.requesterId
+      ? swap.requester.user.name
+      : swap.targetTeacher.user.name;
+
+  await db.$transaction([
+    db.swapRequest.update({
+      where: { id: swap.id },
+      data: { status: SWAP_STATUS.CANCEL_REQUESTED, cancelRequestedById: actor.teacherId },
+    }),
+    db.swapLog.create({
+      data: { swapRequestId: swap.id, action: "CANCEL_REQUESTED", actorId: actor.userId },
+    }),
+  ]);
+
+  await createNotification({
+    userId: otherUserId,
+    type: NOTIFICATION_TYPES.SWAP_CANCEL_REQUEST,
+    title: "คำขอยกเลิกการสลับคาบ",
+    message: `${me} ขอยกเลิกการสลับ ${slotLabel(swap.sourceSchedule)} กับ ${slotLabel(swap.targetSchedule)} — โปรดอนุมัติหรือปฏิเสธ`,
+    linkUrl: "/teacher/swaps",
+  });
+
+  return { swap, otherTeacherId };
+}
+
+function assertCanDecideCancel(
+  actor: Actor,
+  swap: { status: string; cancelRequestedById: string | null; requesterId: string; targetTeacherId: string },
+) {
+  if (swap.status !== SWAP_STATUS.CANCEL_REQUESTED) {
+    throw new SwapError("ไม่มีคำขอยกเลิกที่รอดำเนินการ");
+  }
+  const isAdmin = actor.role === ROLES.ADMIN;
+  // The teacher who must decide is the participant who did NOT request the cancel.
+  const isOther =
+    actor.teacherId &&
+    participants(swap).includes(actor.teacherId) &&
+    actor.teacherId !== swap.cancelRequestedById;
+  if (!isAdmin && !isOther) {
+    throw new SwapError("เฉพาะครูอีกฝ่ายเท่านั้นที่อนุมัติ/ปฏิเสธการยกเลิกได้");
+  }
+}
+
+/** The other teacher approves the cancellation → revert schedules to original. */
+export async function approveSwapCancellation(swapRequestId: string, actor: Actor) {
+  const swap = await db.swapRequest.findUnique({
+    where: { id: swapRequestId },
+    include: swapInclude,
+  });
+  if (!swap) throw new SwapError("ไม่พบคำขอแลกคาบ");
+  assertCanDecideCancel(actor, swap);
+
+  const src = swap.sourceSchedule;
+  const tgt = swap.targetSchedule;
+  const before = {
+    source: { id: src.id, day: src.day, period: src.period },
+    target: { id: tgt.id, day: tgt.day, period: tgt.period },
+  };
+
+  await db.$transaction(async (tx) => {
+    // Exchange the rows' (day, period) again — restores the original timetable.
+    await exchangeDayPeriod(
+      tx,
+      { id: src.id, day: src.day, period: src.period },
+      { id: tgt.id, day: tgt.day, period: tgt.period },
+    );
+    await tx.swapRequest.update({
+      where: { id: swap.id },
+      data: {
+        status: SWAP_STATUS.REVERTED,
+        cancelDecidedById: actor.userId,
+        cancelRespondedAt: new Date(),
+      },
+    });
+    await tx.swapLog.create({
+      data: {
+        swapRequestId: swap.id,
+        action: "CANCEL_APPROVED",
+        actorId: actor.userId,
+        beforeJson: JSON.stringify(before),
+        afterJson: JSON.stringify({
+          source: { id: src.id, day: tgt.day, period: tgt.period },
+          target: { id: tgt.id, day: src.day, period: src.period },
+        }),
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        userId: actor.userId,
+        action: "SWAP_REVERTED",
+        entity: "SwapRequest",
+        entityId: swap.id,
+      },
+    });
+  });
+
+  // Notify the teacher who requested the cancellation.
+  const requestedByUserId =
+    swap.cancelRequestedById === swap.requesterId
+      ? swap.requester.user.id
+      : swap.targetTeacher.user.id;
+  await createNotification({
+    userId: requestedByUserId,
+    type: NOTIFICATION_TYPES.SWAP_CANCELLED,
+    title: "การยกเลิกการสลับได้รับการอนุมัติ",
+    message: `ตารางกลับเป็นเดิมแล้ว: ${slotLabel(src)} และ ${slotLabel(tgt)}`,
+    linkUrl: "/teacher/swaps",
+  });
+
+  // Students of the (single) classroom: schedule reverted.
+  const students = await classStudentUserIds(src.classId);
+  await notifyUsers(students, {
+    type: NOTIFICATION_TYPES.SCHEDULE_CHANGED,
+    title: "ตารางเรียนกลับเป็นเดิม",
+    message: `${slotLabel(src)} และ ${slotLabel(tgt)} ถูกยกเลิกการสลับ กลับเป็นตารางเดิม`,
+    linkUrl: "/student/schedule",
+  });
+
+  return swap;
+}
+
+/** The other teacher rejects the cancellation → the swap stands (back to APPROVED). */
+export async function rejectSwapCancellation(swapRequestId: string, actor: Actor) {
+  const swap = await db.swapRequest.findUnique({
+    where: { id: swapRequestId },
+    include: swapInclude,
+  });
+  if (!swap) throw new SwapError("ไม่พบคำขอแลกคาบ");
+  assertCanDecideCancel(actor, swap);
+
+  const requestedByUserId =
+    swap.cancelRequestedById === swap.requesterId
+      ? swap.requester.user.id
+      : swap.targetTeacher.user.id;
+
+  await db.$transaction([
+    db.swapRequest.update({
+      where: { id: swap.id },
+      data: {
+        status: SWAP_STATUS.APPROVED,
+        cancelRequestedById: null,
+        cancelDecidedById: actor.userId,
+        cancelRespondedAt: new Date(),
+      },
+    }),
+    db.swapLog.create({
+      data: { swapRequestId: swap.id, action: "CANCEL_REJECTED", actorId: actor.userId },
+    }),
+  ]);
+
+  await createNotification({
+    userId: requestedByUserId,
+    type: NOTIFICATION_TYPES.SWAP_REJECTED,
+    title: "คำขอยกเลิกการสลับถูกปฏิเสธ",
+    message: `ครูอีกฝ่ายไม่อนุมัติการยกเลิก — การสลับ ${slotLabel(swap.sourceSchedule)} กับ ${slotLabel(swap.targetSchedule)} ยังมีผลอยู่`,
+    linkUrl: "/teacher/swaps",
+  });
+
+  return swap;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Queries                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -310,6 +512,60 @@ export function getPendingIncomingCount(teacherId: string) {
   });
 }
 
+/** Marks a schedule slot as recently swapped, for timetable highlighting (#7/#9).
+ *  Since a whole session moves time slots, we record where it sat BEFORE. */
+export type SwapMark = {
+  scheduleId: string;
+  originalDay: string;
+  originalPeriod: number;
+  swappedAt: string;
+};
+
+/** Build a `scheduleId -> SwapMark` map for the given slots, from APPROVED swaps.
+ *  After an approved swap each row sits at its partner's old (day, period), so a
+ *  row's ORIGINAL position equals its partner row's CURRENT position. Most-recent
+ *  swap wins if a slot was swapped more than once. */
+export async function getSwapMarks(
+  scheduleIds: string[],
+): Promise<Record<string, SwapMark>> {
+  if (scheduleIds.length === 0) return {};
+  const swaps = await db.swapRequest.findMany({
+    where: {
+      // Highlight while the swap is in effect (APPROVED, or cancellation pending).
+      // A REVERTED swap is back to the original schedule → no highlight.
+      status: { in: [SWAP_STATUS.APPROVED, SWAP_STATUS.CANCEL_REQUESTED] },
+      OR: [
+        { sourceScheduleId: { in: scheduleIds } },
+        { targetScheduleId: { in: scheduleIds } },
+      ],
+    },
+    include: swapInclude,
+    orderBy: { respondedAt: "asc" }, // ascending so later writes overwrite earlier
+  });
+
+  const marks: Record<string, SwapMark> = {};
+  for (const s of swaps) {
+    const when = (s.respondedAt ?? s.createdAt).toISOString();
+    if (scheduleIds.includes(s.sourceScheduleId)) {
+      marks[s.sourceScheduleId] = {
+        scheduleId: s.sourceScheduleId,
+        originalDay: s.targetSchedule.day,
+        originalPeriod: s.targetSchedule.period,
+        swappedAt: when,
+      };
+    }
+    if (scheduleIds.includes(s.targetScheduleId)) {
+      marks[s.targetScheduleId] = {
+        scheduleId: s.targetScheduleId,
+        originalDay: s.sourceSchedule.day,
+        originalPeriod: s.sourceSchedule.period,
+        swappedAt: when,
+      };
+    }
+  }
+  return marks;
+}
+
 export function getAllSwaps() {
   return db.swapRequest.findMany({
     include: swapInclude,
@@ -324,16 +580,22 @@ export function mapSwapToClient(swap: {
   status: string;
   reason: string | null;
   createdAt: Date;
+  requesterId: string;
+  targetTeacherId: string;
+  cancelRequestedById: string | null;
   requester: { user: { name: string } };
   targetTeacher: { user: { name: string } };
-  sourceSchedule: { day: string; period: number; subject: { subjectName: string }; class: { className: string } };
-  targetSchedule: { day: string; period: number; subject: { subjectName: string }; class: { className: string } };
+  sourceSchedule: { day: string; period: number; subject: { subjectName: string; subjectCode: string }; class: { className: string } };
+  targetSchedule: { day: string; period: number; subject: { subjectName: string; subjectCode: string }; class: { className: string } };
 }) {
   return {
     id: swap.id,
     status: swap.status,
     reason: swap.reason,
     createdAt: swap.createdAt.toISOString(),
+    requesterId: swap.requesterId,
+    targetTeacherId: swap.targetTeacherId,
+    cancelRequestedById: swap.cancelRequestedById,
     requesterName: swap.requester.user.name,
     targetTeacherName: swap.targetTeacher.user.name,
     sourceLabel: slotLabel(swap.sourceSchedule),

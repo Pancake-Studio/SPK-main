@@ -46,10 +46,10 @@ export default async function TeacherSwapsPage() {
           <TabsTrigger value="outgoing">คำขอที่ส่ง</TabsTrigger>
         </TabsList>
         <TabsContent value="incoming">
-          <SwapList swaps={incoming} mode="incoming" />
+          <SwapList swaps={incoming} mode="incoming" viewerTeacherId={teacher.id} />
         </TabsContent>
         <TabsContent value="outgoing">
-          <SwapList swaps={outgoing} mode="outgoing" />
+          <SwapList swaps={outgoing} mode="outgoing" viewerTeacherId={teacher.id} />
         </TabsContent>
       </Tabs>
     </div>

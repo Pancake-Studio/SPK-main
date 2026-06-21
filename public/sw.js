@@ -1,4 +1,5 @@
 /* SPK Platform service worker — install + Web Push + click handling. */
+/* sw-version: 2 (PNG notification icon/badge — cross-platform render) */
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -22,8 +23,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "SPK Platform";
   const options = {
     body: data.message || "",
-    icon: "/icon.svg",
-    badge: "/icon.svg",
+    icon: data.icon || "/icon-192.png",
+    badge: "/badge.png",
     tag: data.tag || undefined,
     renotify: Boolean(data.tag),
     data: { url: data.url || "/dashboard" },

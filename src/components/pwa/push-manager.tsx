@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bell, X } from "lucide-react";
+import { Bell, X, Share, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { usePush, type SubscribeResult } from "./use-push";
@@ -27,7 +27,8 @@ function explain(r: Extract<SubscribeResult, { ok: false }>): string {
  * a real button covers browsers that require a user gesture (e.g. iOS).
  */
 export function PushManager() {
-  const { permission, supported, secure, subscribe, ensureSubscribed } = usePush();
+  const { permission, supported, secure, iosNeedsInstall, subscribe, ensureSubscribed } =
+    usePush();
   const [dismissed, setDismissed] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
@@ -54,7 +55,40 @@ export function PushManager() {
     else toast.error(explain(r));
   }
 
-  if (permission === "granted" || permission === "unsupported" || dismissed) {
+  if (dismissed) return null;
+
+  // iOS Safari tab: Web Push only works after "Add to Home Screen" — guide the user
+  // (no enable button is possible here because the APIs don't exist until installed).
+  if (iosNeedsInstall) {
+    return (
+      <div className="mb-4 flex items-start gap-3 rounded-lg border border-primary/30 bg-secondary/40 px-4 py-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+          <Bell className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">
+            เปิดการแจ้งเตือนบน iPhone/iPad
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            ต้องติดตั้งแอปก่อน: แตะปุ่มแชร์{" "}
+            <Share className="inline size-3.5 align-text-bottom" /> ใน Safari →{" "}
+            <span className="font-medium">เพิ่มไปยังหน้าจอโฮม</span>{" "}
+            <Plus className="inline size-3.5 align-text-bottom" /> แล้วเปิดแอปจากไอคอน
+            จึงจะกดเปิดการแจ้งเตือนได้ (iOS 16.4 ขึ้นไป)
+          </p>
+        </div>
+        <button
+          aria-label="ปิด"
+          onClick={() => setDismissed(true)}
+          className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+    );
+  }
+
+  if (permission === "granted" || permission === "unsupported") {
     return null;
   }
 

@@ -27,22 +27,38 @@ export function usePush() {
     NotificationPermission | "unsupported"
   >("default");
   const [secure, setSecure] = React.useState(true);
+  // iOS exposes Web Push ONLY inside an installed (home-screen) PWA. In a Safari
+  // tab the Notification/PushManager APIs don't exist, so we can never prompt —
+  // detect that case to tell the user to "Add to Home Screen" first.
+  const [iosNeedsInstall, setIosNeedsInstall] = React.useState(false);
+  // Gate all capability checks behind mount: the real values depend on `window`,
+  // so computing them during render would differ between SSR and the first client
+  // render → hydration mismatch (e.g. button `disabled`). Stay neutral until mounted.
+  const [mounted, setMounted] = React.useState(false);
 
-  const supported =
+  const rawSupported =
     typeof window !== "undefined" &&
     "serviceWorker" in navigator &&
     "PushManager" in window &&
     "Notification" in window &&
     Boolean(VAPID_PUBLIC);
 
+  const supported = mounted && rawSupported;
+
   React.useEffect(() => {
-    if (typeof window !== "undefined") setSecure(window.isSecureContext);
-    if (!supported) {
-      setPermission("unsupported");
-      return;
-    }
-    setPermission(Notification.permission);
-  }, [supported]);
+    setMounted(true);
+    setSecure(window.isSecureContext);
+    const ua = navigator.userAgent;
+    const isIOS =
+      /iphone|ipad|ipod/i.test(ua) ||
+      // iPadOS 13+ reports as desktop Safari but is touch-capable.
+      (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    setIosNeedsInstall(isIOS && !standalone && !rawSupported);
+    setPermission(rawSupported ? Notification.permission : "unsupported");
+  }, [rawSupported]);
 
   const ensureSubscribed = React.useCallback(async () => {
     const reg = await navigator.serviceWorker.ready;
@@ -94,6 +110,7 @@ export function usePush() {
     permission,
     supported,
     secure,
+    iosNeedsInstall,
     setPermission,
     subscribe,
     ensureSubscribed,

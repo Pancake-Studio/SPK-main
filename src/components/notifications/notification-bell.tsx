@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { NotificationIcon } from "./notification-icon";
-import { cn, timeAgo } from "@/lib/utils";
+import { TimeAgo } from "@/components/time-ago";
+import { cn } from "@/lib/utils";
 import type { ClientNotification } from "@/lib/types";
 import {
   markAllNotificationsReadAction,
@@ -111,9 +112,7 @@ export function NotificationBell({
                       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                         {n.message}
                       </p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {timeAgo(n.createdAt)}
-                      </p>
+                      <TimeAgo date={n.createdAt} className="mt-1 block text-[11px] text-muted-foreground" />
                     </div>
                     {!n.isRead && (
                       <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />

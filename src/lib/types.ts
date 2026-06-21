@@ -15,6 +15,9 @@ export type ClientSwap = {
   status: string;
   reason: string | null;
   createdAt: string;
+  requesterId: string;
+  targetTeacherId: string;
+  cancelRequestedById: string | null;
   requesterName: string;
   targetTeacherName: string;
   sourceLabel: string;

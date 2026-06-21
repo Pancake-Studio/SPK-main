@@ -13,6 +13,7 @@ export type TimetableSlot = {
   teacherName: string;
   classId: string;
   className: string;
+  gradeLevel: string;
 };
 
 export type TimetableGrid = Record<string, Record<number, TimetableSlot | undefined>>;

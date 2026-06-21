@@ -163,9 +163,14 @@ model SwapRequest {
   sourceScheduleId String
   targetScheduleId String
   reason           String?
-  status           String   @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  status           String   @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | CANCEL_REQUESTED | REVERTED
   decidedById      String?
   respondedAt      DateTime?
+  // Cancellation of an already-approved swap (#1): one participant requests,
+  // the other approves → schedules revert. Teacher ids stored as plain strings.
+  cancelRequestedById String?
+  cancelDecidedById   String?
+  cancelRespondedAt   DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

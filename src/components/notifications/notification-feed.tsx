@@ -8,7 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { NotificationIcon } from "./notification-icon";
-import { cn, timeAgo } from "@/lib/utils";
+import { TimeAgo } from "@/components/time-ago";
+import { cn } from "@/lib/utils";
 import type { ClientNotification } from "@/lib/types";
 import {
   markAllNotificationsReadAction,
@@ -64,7 +65,7 @@ export function NotificationFeed({ items }: { items: ClientNotification[] }) {
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-foreground">{n.title}</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">{n.message}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{timeAgo(n.createdAt)}</p>
+                <TimeAgo date={n.createdAt} className="mt-1 block text-xs text-muted-foreground" />
               </div>
               {!n.isRead && <span className="mt-2 size-2 shrink-0 rounded-full bg-primary" />}
             </div>

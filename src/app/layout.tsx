@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
+import { themeInitScript } from "@/lib/theme";
 import { APP_NAME, SCHOOL_NAME } from "@/lib/constants";
 
 const inter = Inter({
@@ -35,8 +36,13 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "SPK" },
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    apple: [{ url: "/icon.svg" }],
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    // iOS ignores SVG — needs a PNG apple-touch-icon (also used as PWA home-screen icon).
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
 };
 
@@ -59,6 +65,7 @@ export default function RootLayout({
       className={`${inter.variable} ${notoThai.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="bg-background text-foreground min-h-full">
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <ThemeProvider>
           {children}
           <Toaster />

@@ -9,7 +9,7 @@ import { usePush } from "./use-push";
 import { getPushStatusAction } from "@/server/actions/push.actions";
 
 export function PushSettings() {
-  const { permission, supported, secure, subscribe, sendTest } = usePush();
+  const { permission, supported, secure, iosNeedsInstall, subscribe, sendTest } = usePush();
   const [status, setStatus] = React.useState<{ configured: boolean; subscriptions: number } | null>(
     null,
   );
@@ -99,10 +99,18 @@ export function PushSettings() {
           ต้องเปิดผ่าน HTTPS หรือ localhost จึงจะใช้การแจ้งเตือนบนอุปกรณ์ได้
         </p>
       )}
-      {permission === "unsupported" && (
-        <p className="text-sm text-muted-foreground">
-          เบราว์เซอร์/อุปกรณ์นี้ไม่รองรับ Web Push (บน iOS ต้องติดตั้งลงหน้าจอหลักก่อน)
+      {iosNeedsInstall ? (
+        <p className="rounded-md border border-primary/30 bg-secondary/40 px-3 py-2 text-sm text-foreground">
+          บน iPhone/iPad ต้องติดตั้งแอปก่อน: เปิดด้วย <span className="font-medium">Safari</span> →
+          แตะปุ่มแชร์ → <span className="font-medium">เพิ่มไปยังหน้าจอโฮม</span> →
+          เปิดแอปจากไอคอน แล้วจึงกด “เปิดการแจ้งเตือน” (ต้อง iOS 16.4 ขึ้นไป)
         </p>
+      ) : (
+        permission === "unsupported" && (
+          <p className="text-sm text-muted-foreground">
+            เบราว์เซอร์/อุปกรณ์นี้ไม่รองรับ Web Push
+          </p>
+        )
       )}
 
       <div className="flex flex-wrap gap-2">

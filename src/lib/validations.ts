@@ -121,4 +121,21 @@ export const announcementSchema = z.object({
 });
 export type AnnouncementInput = z.infer<typeof announcementSchema>;
 
+/* ------------------------------------------------------------------ */
+/*  Update schemas (same fields + id). Password stays optional → blank */
+/*  means "keep current".                                              */
+/* ------------------------------------------------------------------ */
+
+const withId = { id: z.string().min(1) };
+export const teacherUpdateSchema = teacherSchema.extend(withId);
+export const studentUpdateSchema = studentSchema.extend(withId);
+export const classUpdateSchema = classSchema.extend(withId);
+export const subjectUpdateSchema = subjectSchema.extend(withId);
+export const scheduleUpdateSchema = scheduleSchema.extend(withId);
+export type TeacherUpdateInput = z.infer<typeof teacherUpdateSchema>;
+export type StudentUpdateInput = z.infer<typeof studentUpdateSchema>;
+export type ClassUpdateInput = z.infer<typeof classUpdateSchema>;
+export type SubjectUpdateInput = z.infer<typeof subjectUpdateSchema>;
+export type ScheduleUpdateInput = z.infer<typeof scheduleUpdateSchema>;
+
 export { roleEnum };

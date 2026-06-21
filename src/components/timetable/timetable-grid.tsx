@@ -6,11 +6,29 @@ import {
   buildGrid,
   currentPeriodNo,
   dayKeyForDate,
+  dayMeta,
   type TimetableSlot,
 } from "@/lib/timetable";
 import { cn } from "@/lib/utils";
 
 type Variant = "teacher" | "class";
+
+/** Marks a slot as recently swapped (mirrors the server `SwapMark` shape;
+ *  redeclared here to avoid importing the server-only swap service). */
+export type SwapMarkClient = {
+  originalDay: string;
+  originalPeriod: number;
+  swappedAt: string;
+};
+
+export function swapTooltip(m: SwapMarkClient) {
+  const d = new Date(m.swappedAt);
+  const date = isNaN(d.getTime())
+    ? ""
+    : ` · เมื่อ ${d.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`;
+  const from = dayMeta(m.originalDay)?.labelTh ?? m.originalDay;
+  return `สลับคาบ: เดิมอยู่ ${from} คาบ ${m.originalPeriod}${date}`;
+}
 
 export function TimetableGrid({
   slots,
@@ -19,6 +37,9 @@ export function TimetableGrid({
   selectedSlotId,
   onSelectSlot,
   highlightCurrent = true,
+  swapMarks,
+  selectableSlot,
+  blockedHint,
 }: {
   slots: TimetableSlot[];
   variant?: Variant;
@@ -26,6 +47,12 @@ export function TimetableGrid({
   selectedSlotId?: string | null;
   onSelectSlot?: (slot: TimetableSlot) => void;
   highlightCurrent?: boolean;
+  swapMarks?: Record<string, SwapMarkClient>;
+  /** When interactive, only slots for which this returns true are clickable;
+   *  others stay visible (full schedule shown) but dimmed/disabled. */
+  selectableSlot?: (slot: TimetableSlot) => boolean;
+  /** Tooltip shown on a non-selectable slot (e.g. why it can't be swapped). */
+  blockedHint?: string;
 }) {
   const grid = React.useMemo(() => buildGrid(slots), [slots]);
 
@@ -77,7 +104,12 @@ export function TimetableGrid({
                 const slot = grid[d.key]?.[p.period];
                 const isCurrent = today === d.key && curPeriod === p.period;
                 const isSelected = slot && selectedSlotId === slot.id;
-                const clickable = interactive && Boolean(slot) && Boolean(onSelectSlot);
+                const allowed = slot ? !selectableSlot || selectableSlot(slot) : false;
+                const clickable =
+                  interactive && Boolean(slot) && Boolean(onSelectSlot) && allowed;
+                const blocked =
+                  interactive && Boolean(slot) && Boolean(onSelectSlot) && !allowed;
+                const mark = slot ? swapMarks?.[slot.id] : undefined;
 
                 return (
                   <td
@@ -92,15 +124,19 @@ export function TimetableGrid({
                         type="button"
                         disabled={!clickable}
                         onClick={clickable ? () => onSelectSlot!(slot) : undefined}
+                        title={blocked ? blockedHint : mark ? swapTooltip(mark) : undefined}
                         className={cn(
                           "flex h-full w-full flex-col rounded-md border px-2.5 py-2 text-left transition-colors",
                           "border-transparent bg-muted/40",
                           isCurrent &&
                             "border-tt-current-border bg-tt-current text-tt-current-foreground",
+                          mark &&
+                            "border-amber-400/70 bg-amber-50 ring-1 ring-amber-400/50 dark:bg-amber-500/10",
                           isSelected &&
                             "border-primary bg-secondary ring-2 ring-primary/40",
                           clickable && !isSelected && "hover:border-primary/40 hover:bg-secondary/60",
-                          !clickable && "cursor-default",
+                          blocked && "cursor-not-allowed opacity-40",
+                          !clickable && !blocked && "cursor-default",
                         )}
                       >
                         <span className="flex items-center gap-1.5">
@@ -112,7 +148,10 @@ export function TimetableGrid({
                             {slot.subjectName}
                           </span>
                         </span>
-                        <span className="mt-1 truncate text-xs text-muted-foreground">
+                        <span className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                          {slot.subjectCode}
+                        </span>
+                        <span className="mt-0.5 truncate text-xs text-muted-foreground">
                           {variant === "teacher" ? slot.className : slot.teacherName}
                         </span>
                         {slot.room && (
@@ -123,6 +162,11 @@ export function TimetableGrid({
                         {isCurrent && (
                           <span className="mt-1 inline-flex w-fit rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
                             ตอนนี้
+                          </span>
+                        )}
+                        {mark && (
+                          <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full bg-amber-400/90 px-1.5 py-0.5 text-[10px] font-medium text-amber-950">
+                            สลับคาบ
                           </span>
                         )}
                       </button>

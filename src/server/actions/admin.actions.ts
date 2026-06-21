@@ -5,23 +5,38 @@ import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import {
   teacherSchema,
+  teacherUpdateSchema,
   studentSchema,
+  studentUpdateSchema,
   classSchema,
+  classUpdateSchema,
   subjectSchema,
+  subjectUpdateSchema,
   scheduleSchema,
+  scheduleUpdateSchema,
   announcementSchema,
 } from "@/lib/validations";
 import {
   createTeacher,
+  updateTeacher,
   deleteTeacher,
+  deleteTeachers,
   createStudent,
+  updateStudent,
   deleteStudent,
+  deleteStudents,
   createClass,
+  updateClass,
   deleteClass,
+  deleteClasses,
   createSubject,
+  updateSubject,
   deleteSubject,
+  deleteSubjects,
   createSchedule,
+  updateSchedule,
   deleteSchedule,
+  deleteSchedules,
   bulkCreateSchedules,
   getImportLookups,
 } from "@/server/services/admin.service";
@@ -67,6 +82,29 @@ export async function deleteTeacherAction(id: string) {
   return { ok: true };
 }
 
+export async function updateTeacherAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = teacherUpdateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await updateTeacher(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถแก้ไขครูได้");
+  }
+  revalidatePath("/admin/teachers");
+  return ok("แก้ไขครูเรียบร้อยแล้ว");
+}
+
+export async function deleteTeachersAction(ids: string[]) {
+  await requireAdmin();
+  const count = await deleteTeachers(Array.isArray(ids) ? ids : []);
+  revalidatePath("/admin/teachers");
+  return { ok: true, count };
+}
+
 /* -------------------------------- Students ------------------------------ */
 
 export async function createStudentAction(
@@ -90,6 +128,29 @@ export async function deleteStudentAction(id: string) {
   await deleteStudent(id);
   revalidatePath("/admin/students");
   return { ok: true };
+}
+
+export async function updateStudentAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = studentUpdateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await updateStudent(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "อีเมล/รหัสนักเรียน") ?? "ไม่สามารถแก้ไขนักเรียนได้");
+  }
+  revalidatePath("/admin/students");
+  return ok("แก้ไขนักเรียนเรียบร้อยแล้ว");
+}
+
+export async function deleteStudentsAction(ids: string[]) {
+  await requireAdmin();
+  const count = await deleteStudents(Array.isArray(ids) ? ids : []);
+  revalidatePath("/admin/students");
+  return { ok: true, count };
 }
 
 /* --------------------------------- Classes ------------------------------ */
@@ -121,6 +182,29 @@ export async function deleteClassAction(id: string) {
   return { ok: true };
 }
 
+export async function updateClassAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = classUpdateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await updateClass(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "ชื่อห้อง") ?? "ไม่สามารถแก้ไขห้องเรียนได้");
+  }
+  revalidatePath("/admin/classes");
+  return ok("แก้ไขห้องเรียนเรียบร้อยแล้ว");
+}
+
+export async function deleteClassesAction(ids: string[]) {
+  await requireAdmin();
+  const count = await deleteClasses(Array.isArray(ids) ? ids : []);
+  revalidatePath("/admin/classes");
+  return { ok: true, count };
+}
+
 /* -------------------------------- Subjects ------------------------------ */
 
 export async function createSubjectAction(
@@ -150,6 +234,29 @@ export async function deleteSubjectAction(id: string) {
   return { ok: true };
 }
 
+export async function updateSubjectAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = subjectUpdateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await updateSubject(parsed.data);
+  } catch (e) {
+    return fail(uniqueMessage(e, "รหัสวิชา") ?? "ไม่สามารถแก้ไขวิชาได้");
+  }
+  revalidatePath("/admin/subjects");
+  return ok("แก้ไขวิชาเรียบร้อยแล้ว");
+}
+
+export async function deleteSubjectsAction(ids: string[]) {
+  await requireAdmin();
+  const count = await deleteSubjects(Array.isArray(ids) ? ids : []);
+  revalidatePath("/admin/subjects");
+  return { ok: true, count };
+}
+
 /* -------------------------------- Schedules ----------------------------- */
 
 export async function createScheduleAction(
@@ -171,11 +278,37 @@ export async function createScheduleAction(
   return ok("เพิ่มคาบเรียนเรียบร้อยแล้ว");
 }
 
+export async function updateScheduleAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = scheduleUpdateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
+  try {
+    await updateSchedule(parsed.data);
+  } catch (e) {
+    return fail(
+      uniqueMessage(e, "คาบเรียนนี้ (ห้อง/วัน/คาบ)") ??
+        "ไม่สามารถแก้ไขคาบเรียนได้",
+    );
+  }
+  revalidatePath("/admin/schedule");
+  return ok("แก้ไขคาบเรียนเรียบร้อยแล้ว");
+}
+
 export async function deleteScheduleAction(id: string) {
   await requireAdmin();
   await deleteSchedule(id);
   revalidatePath("/admin/schedule");
   return { ok: true };
+}
+
+export async function deleteSchedulesAction(ids: string[]) {
+  await requireAdmin();
+  const count = await deleteSchedules(Array.isArray(ids) ? ids : []);
+  revalidatePath("/admin/schedule");
+  return { ok: true, count };
 }
 
 /** Import timetable rows parsed client-side from CSV/Excel. */
