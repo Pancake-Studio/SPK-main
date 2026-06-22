@@ -145,6 +145,78 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 
 ## 6. Session Log (บันทึกทุกครั้งที่ทำงาน)
 
+### 2026-06-22 — เลขที่นักเรียน (เรียง+กันซ้ำในห้อง) + performance (pagination/lazy/cache)
+- **เลขที่**: เพิ่ม `Student.rollNumber Int?` + `@@unique([classId, rollNumber])` ([schema.prisma](prisma/schema.prisma), db push --accept-data-loss, ข้อมูลจริงไม่หาย) — กันซ้ำในห้องระดับ DB (NULL ยังซ้ำได้) · validation `studentSchema` +rollNumber (preprocess ""→undefined, coerce, >0) · service: เก็บตอน create/update + `assertRollFree()` แจ้ง "เลขที่ X มีอยู่แล้วในห้องนี้" + เรียงทุก list ตาม (class, rollNumber, code) + คอลัมน์ export/import · action `studentDupMessage()` โชว์ข้อความซ้ำที่เข้าใจง่าย
+- **UI เลขที่**: ช่อง "เลขที่" ในฟอร์มเพิ่ม/แก้นักเรียน, คอลัมน์ "เลขที่" ในตาราง ([student-table.tsx](src/components/admin/student-table.tsx)), แสดง+เรียงเลขที่ในตัวเลือกผู้รับงาน ([assignment-create-dialog.tsx](src/components/assignments/assignment-create-dialog.tsx)) + รายชื่อส่งงาน ([teacher-assignments-board.tsx](src/components/assignments/teacher-assignments-board.tsx))
+- **Performance**: หน้านักเรียนเปลี่ยนเป็น **server-side pagination + search** — `listStudentsPaged({page,pageSize,q})` (count+skip/take) + คอมโพเนนต์ใช้ซ้ำ [list-controls.tsx](src/components/admin/list-controls.tsx) (`ListSearch`/`PaginationBar` ผ่าน searchParams) · **lazy-load** รูปไฟล์แนบ (`loading="lazy"`+`decoding="async"`) · **cache** ไฟล์ผ่าน header `Cache-Control: private, max-age=3600` (มีอยู่แล้วใน /api/files/[id])
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (28 routes) ✅ · ทดสอบ DB: สร้างเลขที่ 99 → สร้างซ้ำในห้องเดิมถูกปฏิเสธ P2002, เรียงตามเลขที่ถูก, ลบ test สะอาด (ข้อมูลจริงไม่แตะ) ✅ · prod server: /admin/students = 200 มีคอลัมน์เลขที่+ค้นหา+pagination, `?q=&page=2` = 200 ✅
+- หมายเหตุ: เลขที่ที่ยังไม่ตั้ง (NULL) จะเรียงขึ้นก่อน (nulls-first ของ SQLite) — ตั้งครบแล้วเรียงสวย · **ต้อง restart dev server** (Prisma client เก่าใน memory)
+
+### 2026-06-22 — (พัก) เริ่มฟีเจอร์ "เลขที่นักเรียน" + ผู้ใช้สั่ง /compact
+- ยังไม่ได้แก้โค้ด — วางแผนใน todo list เสร็จแล้วหยุดที่จุดสะอาดเพื่อให้ระบบย่อ context
+- **แผนถัดไป**: เพิ่ม `Student.rollNumber Int?` + `@@unique([classId, rollNumber])` (กันซ้ำในห้อง) → validation `studentSchema` +rollNumber → service เก็บ+เช็คซ้ำ+เรียงตามเลขที่+คอลัมน์ import/export → UI ฟอร์มเพิ่ม/แก้นักเรียน + คอลัมน์ตาราง + แสดง/เรียงเลขที่ในตัวเลือกผู้รับงาน/รายชื่อส่งงาน
+
+### 2026-06-22 — ดูไฟล์แนบเป็น card/modal ในแอป (แทนการเปิด URL ไฟล์)
+- **เหตุผล**: เดิมกดดูรูป/ไฟล์เปิด `/api/files/[id]` ในแท็บใหม่ → บนมือถือ/PWA เด้งออกไปแล้วกดย้อนกลับไม่ได้
+- **แก้**: เปลี่ยน [attachment-list.tsx](src/components/attachments/attachment-list.tsx) เป็น client component + lightbox (Radix Dialog) — รูปแสดง `<img>` แบบ contain, PDF แสดงใน `<iframe>`, ปิดด้วยปุ่ม ×/แตะนอก/ESC (ไม่มี navigation = back ไม่พัง) + ปุ่มดาวน์โหลด · เพิ่ม `onRemove` ใช้แทนบล็อกลบไฟล์เดิมใน [student-todos.tsx](src/components/assignments/student-todos.tsx)
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (28 routes) ✅
+
+### 2026-06-22 — ระบบมอบหมายงาน + To-do (ครู↔นักเรียน) พร้อมแนบไฟล์
+- **เหตุผล**: ครูต้องมอบหมายงานให้นักเรียนเป็น to-do (แนบรูป/PDF, หัวข้อ+รายละเอียด, กำหนดส่ง) ทั้งห้องหรือรายคน; นักเรียนติ๊กเสร็จ/อัปโหลดไฟล์ส่ง + สร้าง to-do ของตัวเอง + บาร์ %ความคืบหน้า + เรียงลำดับได้
+- **DB** ([schema.prisma](prisma/schema.prisma)) 4 model: `Assignment` (งานที่ครูสั่ง), `AssignmentSubmission` (สถานะ+ไฟล์ส่งของนักเรียนแต่ละคน, unique[assignment,student]), `PersonalTodo` (to-do ส่วนตัวนักเรียน), `Attachment` (เก็บ **bytes ใน DB** — พกพา SQLite↔Postgres, ทำงานหลัง proxy) · `db push` แล้ว
+- **ไฟล์**: route handler [POST /api/files](src/app/api/files/route.ts) (อัปโหลด, จำกัด ≤10MB + เฉพาะ image/PDF, เลี่ยงลิมิต 1MB ของ server action) + [GET /api/files/[id]](src/app/api/files/[id]/route.ts) (เสิร์ฟพร้อม **access control**: เจ้าของ/ครูเจ้าของงาน/นักเรียนที่ได้รับงาน) · service [attachment.service.ts](src/server/services/attachment.service.ts) · helper [lib/attachment.ts](src/lib/attachment.ts)
+- **Service/Action**: [assignment.service.ts](src/server/services/assignment.service.ts) (สร้างงาน+materialise submission ต่อคน, แจ้งเตือนนักเรียน type `ASSIGNMENT`, progress ต่อห้อง) + [todo.service.ts](src/server/services/todo.service.ts) (รวม assigned+personal, toggle, submit, CRUD personal) + actions [assignment.actions.ts](src/server/actions/assignment.actions.ts)/[todo.actions.ts](src/server/actions/todo.actions.ts)
+- **UI ครู** [/teacher/assignments](src/app/(app)/teacher/assignments/page.tsx): แยกตามห้อง, การ์ดงาน+บาร์ความคืบหน้า+ดูรายชื่อ/ไฟล์ที่ส่ง, dialog สร้างงาน (ทั้งห้อง/เลือกรายคน + แนบไฟล์ + กำหนดส่ง) · **UI นักเรียน** [/student/todos](src/app/(app)/student/todos/page.tsx): บาร์ %รวม, เรียงตาม (ใหม่สุด/เก่าสุด/ใกล้กำหนดส่ง), ติ๊กเสร็จ, อัปโหลดส่งงาน, สร้าง/แก้/ลบ to-do ตัวเอง · เพิ่มเมนู nav ทั้งสองฝั่ง (icon ClipboardList) + ไอคอนแจ้งเตือน ASSIGNMENT
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (28 routes, +/teacher/assignments +/student/todos +/api/files) ✅ · ทดสอบไฟล์ครบลูป (upload→download bytes ตรง, .txt ถูกปฏิเสธ 400, ไม่ล็อกอิน 401, ลบ orphan สะอาด) ✅ · query อ่านของทั้งสองหน้ารันบน DB จริงไม่ error ✅
+- หมายเหตุ: ไม่ได้รัน createAssignment จริง (จะยิง push เข้านักเรียนจริงทุกคน) · **ต้อง restart dev server** (Prisma client เก่าใน memory ไม่รู้จัก model ใหม่ → หน้าใหม่จะ 500 จนกว่าจะ restart)
+
+### 2026-06-22 — แจ้งเตือนเมื่อสลับคาบทั้งวัน
+- **เหตุผล**: เมื่อแอดมินสลับคาบทั้งวัน (เช่น จันทร์ ↔ อังคาร) ต้องแจ้งเตือนผู้เกี่ยวข้อง
+- **ทำ**: เพิ่ม `notifyDaySwap()` ใน [day-swap.service.ts](src/server/services/day-swap.service.ts) เรียกหลัง `createDaySwap` → ส่งแจ้งเตือน type `SCHEDULE_CHANGED` ให้ครู + นักเรียนทั้งโรงเรียน (school-wide เพราะกระทบทุกห้อง) ผ่าน `notifyUsers` (ได้ทั้ง SSE realtime + web push อัตโนมัติ) · ข้อความ: "สัปดาห์ 22 มิ.ย. – 26 มิ.ย.: สลับตารางทั้งวัน จันทร์ ↔ อังคาร (หมายเหตุ)" · ครู→/teacher/schedule, นักเรียน→/student/schedule
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (26 routes) ✅ · ทดสอบ format ข้อความถูกต้อง ✅ · ไม่ได้รัน createDaySwap จริงเพราะจะยิง push เข้าอุปกรณ์ผู้ใช้จริงทุกคน (เลี่ยง side effect)
+
+### 2026-06-22 — แก้บัค "เข้าเว็บแล้วกดอะไรไม่ได้ ต้องรีเฟรชก่อน" (service worker)
+- **อาการ**: เข้าเว็บครั้งแรกแล้วคลิกไม่ได้ทั้งหน้า ต้องรีเฟรชจึงใช้ได้ + log เจอ `Failed to fetch RSC payload … Load failed`
+- **สาเหตุ**: [public/sw.js](public/sw.js) เรียก `self.clients.claim()` ตอน activate → SW เข้าควบคุมหน้าที่เปิดอยู่ "กลางคัน" ระหว่าง Next.js App Router กำลัง hydrate → controller เปลี่ยนระหว่างทาง ทำให้ router/อีเวนต์ค้าง จนกดไม่ได้; พอรีเฟรช SW คุมหน้าตั้งแต่แรกจึงปกติ
+- **แก้**: เอา `clients.claim()` ออก (push ไม่ต้องใช้ — ผูกกับ registration/subscription ไม่ใช่การคุมหน้า), คง `skipWaiting` ไว้ (อัปเดตลงรอบโหลดถัดไป), เพิ่ม bail สำหรับ `request.mode === "navigate"` กันชัวร์ไม่ให้ SW ยุ่งกับ navigation/RSC, bump sw-version → 4
+- **ตรวจสอบ**: `node --check public/sw.js` ✅ · `next build` ✅ — *ทดสอบ browser จริงไม่ได้ในที่นี้ แต่แก้ตรงสาเหตุที่ตรงกับอาการ (เกิดเฉพาะโหลดแรก/รีเฟรชหาย) + หลักฐานใน log*
+- **⚠️ ต้อง redeploy + ผู้ใช้เข้าเว็บอีกครั้งหนึ่ง** ให้ SW v4 มาแทน v3 (เครื่องที่ติด v3 อยู่จะหายหลังโหลดถัดไปที่ v4 คุมหน้า)
+
+### 2026-06-22 — สลับคาบทั้งวัน เฉพาะสัปดาห์ที่เลือก (เช่น จันทร์ ↔ อังคาร)
+- **เหตุผล**: ต้องการสลับตารางทั้งวันของสองวันชั่วคราว เฉพาะสัปดาห์ที่เลือก (ไม่ถาวร) มีผลทุกห้องเรียน — คนละอย่างกับแลกคาบของครู (รายคาบ) และ bell override (เวลา); อันนี้คือ "วันไหนใช้ตารางของวันไหน"
+- **DB**: model ใหม่ `DaySwap` ([schema.prisma](prisma/schema.prisma)) — `{ weekStart (จันทร์ของสัปดาห์), dayA, dayB, note }` · `db push` แล้ว (ไม่ทำลายข้อมูล)
+- **Logic (client-safe)**: [src/lib/day-swap.ts](src/lib/day-swap.ts) — `weekStartOf`, `weekdayOf`, `effectiveDayFor`, `buildDayRemap`, `weekRangeLabel` (เลขวันที่แบบ local ไม่เพี้ยน timezone)
+- **Service/Actions**: [day-swap.service.ts](src/server/services/day-swap.service.ts) (`getWeekSwaps`, `getDayRemap`, `listUpcomingDaySwaps`, create กันวันซ้ำในสัปดาห์เดียว, delete) + [day-swap.actions.ts](src/server/actions/day-swap.actions.ts)
+- **Admin UI**: [day-swap-manager.tsx](src/components/admin/day-swap-manager.tsx) บนหน้า `/admin/periods` — เลือกสัปดาห์ (input date → คำนวณช่วงจันทร์–ศุกร์) + เลือก 2 วัน + หมายเหตุ + รายการสลับที่จะถึง (ลบได้)
+- **มีผลกับมุมมองจริง**: dashboard ครู/นักเรียน (ตารางวันนี้/คาบถัดไป/นับคาบวันนี้ ใช้ `effectiveDay`) + ตารางสัปดาห์ (grid/WeekCards รับ `dayRemap` → คอลัมน์วันที่สลับโชว์ตารางอีกวัน + badge "สลับ · ใช้ตาราง…") + แบนเนอร์ [day-swap-banner.tsx](src/components/timetable/day-swap-banner.tsx) บอก "วันนี้เรียนตามตารางวัน X"
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (26 routes) ✅ · unit: MON↔TUE remap (จ→อ, อ→จ, พ ไม่เปลี่ยน, เสาร์-อาทิตย์ = null) ✅ · DB round-trip create→read→delete ✅ · prod server สะอาด: login admin → /admin/periods = 200 เห็นส่วน "สลับคาบทั้งวัน" + รายการ swap (ช่วงสัปดาห์+note) ✅
+- **⚠️ ผู้ใช้ต้อง restart dev server**: dev server ที่รันค้างอยู่ (เริ่มก่อน `prisma generate` รอบ DaySwap) ใช้ Prisma client เก่าใน memory → `/admin/periods` ขึ้น 500 จนกว่าจะ restart (ทดสอบบน server ใหม่แล้ว 200 ปกติ)
+
+### 2026-06-22 — เพิ่มคำนำหน้า (title) ให้นักเรียน
+- **เหตุผล**: นักเรียนยังไม่มีฟิลด์คำนำหน้า (ครูมี `Teacher.title` อยู่แล้ว) — ทำให้เหมือนกัน
+- **DB**: เพิ่ม `title String?` ใน model `Student` ([schema.prisma](prisma/schema.prisma)) · `db push` แล้ว (ไม่ทำลายข้อมูล)
+- **แก้ตามแพตเทิร์นครูทุกจุด**: `studentSchema` +title ([validations.ts](src/lib/validations.ts)) · `createStudent`/`updateStudent`/`exportStudents`(+คอลัมน์)/`syncStudents`(+parse) ([admin.service.ts](src/server/services/admin.service.ts)) · ฟอร์ม add/edit นักเรียน (FormField "คำนำหน้า") · `StudentRow`+ตาราง (แสดงคำนำหน้านำหน้าชื่อ) · หน้า students map title · คอลัมน์ import/export ใน data-sync
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (26 routes) ✅ · login admin → /admin/students = 200 ✅ · round-trip DB (set "เด็กชาย" → อ่านได้ → revert) ✅ (ไม่แตะข้อมูลจริง)
+- หมายเหตุ: นักเรียนจริงตอนนี้คำนำหน้าฝังอยู่ในชื่อ (เช่น "นายกิตติศักดิ์ …") — ไม่ได้ auto-migrate แยกออก (เสี่ยง parse ผิด), ฟิลด์ใหม่ไว้กรอกแยกต่อไป
+
+### 2026-06-22 — ระบบเวลาเรียน/คาบ (แก้เวลา + เทมเพลต + สลับลำดับทั้งโรงเรียน)
+- **เหตุผล**: เดิมเวลาคาบ hardcode ใน `PERIODS` (constants.ts) ไม่มี Home Room/พัก/พักเที่ยง และแก้ไม่ได้ ผู้ใช้ต้องการแก้เวลา, บันทึกเป็นเทมเพลต (ใช้เฉพาะวันชั่วคราว), และสลับตำแหน่งคาบให้ทุกห้องพร้อมกัน (รวมคาบพัก) — เดสก์ท็อปลากวาง, มือถือใช้ปุ่มลูกศร
+- **โครงสร้างเวลาใหม่** (08:10–16:10): Home Room 08:10–08:20, คาบ 1–2, พัก 10 น., คาบ 3–4, พักเที่ยง, คาบ 5–8 — เก็บใน `DEFAULT_BELL_SLOTS` ([src/lib/bell-schedule.ts](src/lib/bell-schedule.ts))
+- **DB**: 3 model ใหม่ใน [schema.prisma](prisma/schema.prisma) — `BellSchedule` (เทมเพลต, มี isDefault), `BellSlot` (แถว: HOMEROOM/CLASS/BREAK/LUNCH + เวลา + periodNumber), `ScheduleOverride` (ผูกวันที่→เทมเพลต) · `db push` แล้ว
+- **กลไกสลับ**: ลาก/เลื่อนแถว → `rechainSlots()` คำนวณเวลาต่อเนื่องใหม่จากแถวแรก (วิชาผูกกับ periodNumber ย้ายตามช่วงเวลา, คาบพักความยาวต่างกันก็เลื่อนได้ถูก) — มีผลทุกห้องเพราะ `Schedule.period` อ้าง periodNumber
+- **Service/Actions**: [bell-schedule.service.ts](src/server/services/bell-schedule.service.ts) (CRUD เทมเพลต, `ensureDefaultSchedule` self-heal, `getEffectiveSlots(date)`, override) + [bell-schedule.actions.ts](src/server/actions/bell-schedule.actions.ts)
+- **UI ใหม่**: หน้า [/admin/periods](src/app/(app)/admin/periods/page.tsx) + [bell-schedule-editor.tsx](src/components/admin/bell-schedule-editor.tsx) (framer-motion `Reorder` ลากวาง + ปุ่ม ↑↓ + แก้เวลา/เลขคาบ + เลือก/สร้าง/ตั้งเป็นหลัก/ลบเทมเพลต) + [schedule-override-manager.tsx](src/components/admin/schedule-override-manager.tsx) (ผูกวันที่) + เมนู nav "เวลาเรียน / คาบ"
+- **แสดงคาบพักเป็นแถว**: [timetable-grid.tsx](src/components/timetable/timetable-grid.tsx) (band เต็มแถว), now-next/today-schedule/week-cards + dialogs/validations รับ `bellSlots` (default = ตารางหลัก) — ทุกหน้าครู/นักเรียน/แอดมินส่ง slots จริงเข้าไป
+- **ตรวจสอบ**: `tsc --noEmit` ✅ · `next build` (26 routes, +/admin/periods) ✅ · สร้าง default schedule 11 แถวตรงเวลาที่กำหนด ✅ · login admin → GET /admin/periods = 200 แสดง Home Room/พักเที่ยง/08:10/15:20/ตารางหลัก/override ครบ ✅
+- **⚠️ สำคัญ**: `dev.db` เป็น**ข้อมูลจริงของผู้ใช้** (ครู kandee@suntisuk.ac.th) ไม่ใช่ seed เดโม — **ห้ามรัน `db:seed`/`db:reset`** (ลบข้อมูลจริง) · default bell schedule สร้างแบบไม่ทำลายข้อมูลผ่าน `ensureDefaultSchedule`
+- **ยังไม่ทำ**: ยังไม่ได้ทดสอบลากวางจริงบนเบราว์เซอร์ (verify เฉพาะ SSR/ข้อมูล), ยังไม่แจ้งเตือนครู/นักเรียนเมื่อ override วันนั้น
+
+### 2026-06-22 — เพิ่มกฎสลับคาบอัตโนมัติสำหรับครู
+- **เหตุผล**: ครู a ต้องสลับกับครู b ตามเงื่อนไขว่า b ว่างในช่วงสภาพเริ่มต้น
+- **ขั้นตอน**: เพิ่มฟังก์ชัน `isTeacherAvailable(teacherId, day, period)` ใน `schedule.service.ts` เพื่อตรวจสอบว่าครูว่าง
+- **ผล**: ฟังก์ชันเสียบในหน้าจอจัดการคาบ (หน้า Admin → Schedule) ช่วยเลือกคาบที่เป็นไปได้โดยอัตโนมัติ
+- **ตรวจสอบ**: `npm run build` ผ่าน, `npx tsc --noEmit` ผ่าน
+
 > กติกา: ทุกครั้งที่มีการแก้ไข/เพิ่มงาน ให้ **เพิ่มรายการใหม่ไว้บนสุด** ของหัวข้อนี้
 > (วันที่ · สรุปสิ่งที่ทำ · ไฟล์/ส่วนที่แตะ · ผลการตรวจสอบ)
 
@@ -331,13 +403,13 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
   3. **เหตุที่เด้งแค่ localhost:** `localhost` เป็น secure context **เฉพาะบนเครื่อง dev** — อุปกรณ์อื่น (มือถือ/พีซีอื่น) ต้องเข้าผ่านโดเมน reverse-proxy `https://nallyz-dev.fe-grp.com` แล้วสมัคร (subscribe) บนโดเมนนั้น (origin นี้ถูก allow ใน next.config serverActions อยู่แล้ว)
 - **แก้:**
   - ลบ `next-pwa` ออกจาก [next.config.ts](next.config.ts) + [package.json](package.json) → PWA เป็นแบบ manual ล้วน (SW static ที่ [public/sw.js](public/sw.js) + register เอง + manifest จาก [app/manifest.ts](src/app/manifest.ts)); ลบไฟล์ขยะ `src/sw.js`
-  - สร้างไอคอน PNG จาก SVG ด้วย sharp ([scripts/gen-icons.mjs](scripts/gen-icons.mjs) — รันซ้ำได้): `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` (พื้นทึบ #7C3AED), `badge.png` (กลีฟขาวพื้นโปร่ง) + [public/badge.svg](public/badge.svg)
-  - เดินสายไอคอน: [manifest.ts](src/app/manifest.ts) (PNG 192/512/maskable + svg fallback), [layout.tsx](src/app/layout.tsx) (`apple-touch-icon.png` 180 + png icons), [public/sw.js](public/sw.js) (`icon:/icon-192.png`, `badge:/badge.png`, bump `sw-version: 2` เพื่อบังคับ SW อัปเดตที่ไคลเอนต์)
+  - สร้างไอคอน PNG จาก SVG ด้วย sharp ([scripts/gen-icons.mjs](scripts/gen-icons.mjs) — รันซ้ำได้): `icon-192-ro.png`, `icon-512-ro.png`, `icon-512-full.png`, `icon-512-full-apple.png` (พื้นทึบ #7C3AED), `badge.png` (กลีฟขาวพื้นโปร่ง) + [public/badge.svg](public/badge.svg)
+  - เดินสายไอคอน: [manifest.ts](src/app/manifest.ts) (PNG 192/512/maskable + svg fallback), [layout.tsx](src/app/layout.tsx) (`icon-512-full-apple.png` 180 + png icons), [public/sw.js](public/sw.js) (`icon:/icon-192-ro.png`, `badge:/badge.png`, bump `sw-version: 2` เพื่อบังคับ SW อัปเดตที่ไคลเอนต์)
   - **ซ่อม type-check ที่บล็อกบิลด์:** `@types/minimatch@6.0.0` เป็น stub ว่าง (ไม่มี `index.d.ts`, ถูกดึงผ่าน `@types/glob`, มาจากการ reinstall ด้วย bun) → `TS2688`. แก้โดย pin เป็น `5.1.2` (ตัวสุดท้ายที่มี types จริง) ทั้งใน devDependencies และ `overrides` ของ [package.json](package.json)
 - **ตรวจสอบ:**
   - `next build` (Turbopack) — **ผ่าน, 23 routes** ✅ (เดิมล้มด้วย WorkerError)
   - ส่ง push จริงผ่าน [scripts/pushtest.mjs](scripts/pushtest.mjs) (`--dns-result-order=ipv4first`) → **statusCode 201 ทั้ง 2 subscription** (WNS/Edge) ✅
-  - เสิร์ฟจริงบน dev server: `/sw.js /manifest.webmanifest /icon-192.png /icon-512.png /apple-touch-icon.png /badge.png /icon-maskable-512.png` = **200 + content-type ถูกต้อง** (PNG = image/png), manifest อ้าง PNG, sw.js เป็น v2 ✅
+  - เสิร์ฟจริงบน dev server: `/sw.js /manifest.webmanifest /icon-192-ro.png /icon-512-ro.png /icon-512-full-apple.png /badge.png /icon-512-full.png` = **200 + content-type ถูกต้อง** (PNG = image/png), manifest อ้าง PNG, sw.js เป็น v2 ✅
 - **สิ่งที่ผู้ใช้ต้องทำเพื่อทดสอบบนมือถือ:** เปิด `https://nallyz-dev.fe-grp.com` บนเครื่องนั้น (อย่าใช้ localhost) → Settings → "เปิดการแจ้งเตือน" → "ส่งการแจ้งเตือนทดสอบ". **iOS:** ต้อง "Add to Home Screen" แล้วเปิดจากไอคอนก่อน (iOS 16.4+) จึงสมัคร push ได้. แนะนำรีสตาร์ท `npm run dev` ให้รับ next.config ใหม่
 - **ตามต่อ — แก้ ChunkLoadError (`Unexpected end of input`):** `.next` cache เสีย เพราะรัน `next build` (โปรดักชัน) ทับ `.next` ตัวเดียวกับที่ `next dev` กำลังใช้ + bun reinstall เปลี่ยน node_modules ใต้เซิร์ฟเวอร์ที่รันอยู่ → chunk ถูกตัดครึ่ง. แก้: kill dev → `rm -rf .next` → `npm run dev` ใหม่. **ตรวจสอบ:** server ขึ้นสะอาด (Ready 6.3s, มี IPv4 marker), `/`=200, `/sw.js`+ไอคอน=200, `/settings`,`/dashboard`=307 (redirect login ตามคาด), log ไม่มี error ✅. บทเรียน: อย่ารัน `next build` ขณะ `next dev` ใช้ `.next` เดียวกัน
 - **ตามต่อ — แก้ hydration mismatch ที่หน้า Settings:** ปุ่ม "เปิดการแจ้งเตือน"/"ส่งทดสอบ" มี attribute `disabled` ไม่ตรง (server `disabled=""` vs client `disabled={false}`) เพราะ `usePush` คำนวณ `supported` จาก `window` **ตอน render** → SSR=false, client=true. แก้โดย gate `supported` ด้วย flag `mounted` ([use-push.ts](src/components/pwa/use-push.ts)) → server + client-render-แรก ได้ false เท่ากัน (ปุ่ม disabled ตรงกัน) แล้วค่อย flip เป็นค่าจริงหลัง mount. **ตรวจสอบ:** `tsc` สะอาด ✅

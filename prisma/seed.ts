@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DAY_KEYS } from "../src/lib/constants";
+import { DEFAULT_BELL_SLOTS } from "../src/lib/bell-schedule";
 
 const db = new PrismaClient();
 
@@ -17,6 +18,8 @@ async function main() {
   await db.announcement.deleteMany();
   await db.auditLog.deleteMany();
   await db.session.deleteMany();
+  await db.scheduleOverride.deleteMany();
+  await db.bellSchedule.deleteMany();
   await db.schedule.deleteMany();
   await db.student.deleteMany();
   await db.teacher.deleteMany();
@@ -145,6 +148,24 @@ async function main() {
       }
     }
   }
+
+  // --- Bell schedule (period times shared by every classroom) -------------
+  await db.bellSchedule.create({
+    data: {
+      name: "ตารางปกติ",
+      isDefault: true,
+      slots: {
+        create: DEFAULT_BELL_SLOTS.map((s) => ({
+          order: s.order,
+          kind: s.kind,
+          label: s.label,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          periodNumber: s.periodNumber,
+        })),
+      },
+    },
+  });
 
   // --- Announcements ------------------------------------------------------
   const admin = await db.user.findUniqueOrThrow({

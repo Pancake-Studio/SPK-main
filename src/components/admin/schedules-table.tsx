@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EditScheduleDialog } from "@/components/admin/edit-schedule-dialog";
+import { DEFAULT_BELL_SLOTS, type BellSlotData } from "@/lib/bell-schedule";
 
 export type ScheduleRow = {
   id: string;
@@ -42,6 +43,7 @@ export function SchedulesTable({
   occupied,
   deleteOne,
   deleteMany,
+  bellSlots = DEFAULT_BELL_SLOTS,
 }: {
   rows: ScheduleRow[];
   classes: { value: string; label: string }[];
@@ -50,6 +52,7 @@ export function SchedulesTable({
   occupied?: Record<string, number[]>;
   deleteOne: (id: string) => Promise<{ ok: boolean; error?: string }>;
   deleteMany: (ids: string[]) => Promise<{ ok: boolean; count?: number }>;
+  bellSlots?: BellSlotData[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
@@ -181,6 +184,7 @@ export function SchedulesTable({
                       subjects={subjects}
                       teachers={teachers}
                       occupied={occupied}
+                      bellSlots={bellSlots}
                     />
                     <Button
                       variant="ghost"

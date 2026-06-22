@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALL_ROLES, DAY_KEYS, PERIOD_NUMBERS } from "@/lib/constants";
+import { ALL_ROLES, DAY_KEYS, MAX_PERIOD_NUMBER } from "@/lib/constants";
 
 /* ------------------------------------------------------------------ */
 /*  Shared primitives                                                  */
@@ -78,6 +78,12 @@ export const studentSchema = z.object({
   email: emailSchema,
   password: passwordSchema.optional(),
   studentCode: z.string().trim().min(1, "กรอกรหัสนักเรียน").max(40),
+  title: z.string().trim().max(20).optional(),
+  // เลขที่ในห้อง — optional; empty string → undefined (no number yet).
+  rollNumber: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number({ message: "เลขที่ต้องเป็นตัวเลข" }).int().min(1, "เลขที่ต้องมากกว่า 0").max(999).optional(),
+  ),
   classId: z.string().min(1, "เลือกห้องเรียน"),
 });
 export type StudentInput = z.infer<typeof studentSchema>;
@@ -108,7 +114,8 @@ export const scheduleSchema = z.object({
   period: z.coerce
     .number()
     .int()
-    .refine((p) => PERIOD_NUMBERS.includes(p), "คาบไม่ถูกต้อง"),
+    .min(1, "คาบไม่ถูกต้อง")
+    .max(MAX_PERIOD_NUMBER, "คาบไม่ถูกต้อง"),
   room: z.string().trim().max(60).optional(),
 });
 export type ScheduleInput = z.infer<typeof scheduleSchema>;
@@ -137,5 +144,76 @@ export type StudentUpdateInput = z.infer<typeof studentUpdateSchema>;
 export type ClassUpdateInput = z.infer<typeof classUpdateSchema>;
 export type SubjectUpdateInput = z.infer<typeof subjectUpdateSchema>;
 export type ScheduleUpdateInput = z.infer<typeof scheduleUpdateSchema>;
+
+/* ------------------------------------------------------------------ */
+/*  Bell schedule (period times + ordering templates)                  */
+/* ------------------------------------------------------------------ */
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const slotKindEnum = z.enum(["HOMEROOM", "CLASS", "BREAK", "LUNCH"]);
+
+export const bellSlotSchema = z
+  .object({
+    kind: slotKindEnum,
+    label: z.string().trim().min(1, "กรอกชื่อคาบ").max(60),
+    startTime: z.string().regex(HHMM, "เวลาไม่ถูกต้อง"),
+    endTime: z.string().regex(HHMM, "เวลาไม่ถูกต้อง"),
+    periodNumber: z.coerce.number().int().min(1).max(MAX_PERIOD_NUMBER).nullable(),
+  })
+  .refine((s) => s.kind !== "CLASS" || s.periodNumber != null, {
+    message: "คาบเรียนต้องมีเลขคาบ",
+    path: ["periodNumber"],
+  });
+
+/** Full save of a template's slots (after edit / reorder / swap). */
+export const bellScheduleSaveSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1, "กรอกชื่อตาราง").max(80),
+  slots: z.array(bellSlotSchema).min(1, "ต้องมีอย่างน้อย 1 แถว"),
+});
+export type BellScheduleSaveInput = z.infer<typeof bellScheduleSaveSchema>;
+
+/** Swap two whole weekdays' timetables for one specific week. */
+export const daySwapSchema = z
+  .object({
+    weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "เลือกสัปดาห์"),
+    dayA: z.enum(DAY_KEYS as [string, ...string[]]),
+    dayB: z.enum(DAY_KEYS as [string, ...string[]]),
+    note: z.string().trim().max(120).optional(),
+  })
+  .refine((s) => s.dayA !== s.dayB, { message: "ต้องเลือกคนละวัน", path: ["dayB"] });
+export type DaySwapInput = z.infer<typeof daySwapSchema>;
+
+/** Pin a date to a bell-schedule template (temporary per-day change). */
+export const scheduleOverrideSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "วันที่ไม่ถูกต้อง"),
+  bellScheduleId: z.string().min(1, "เลือกตาราง"),
+  note: z.string().trim().max(120).optional(),
+});
+export type ScheduleOverrideInput = z.infer<typeof scheduleOverrideSchema>;
+
+/* ------------------------------------------------------------------ */
+/*  Assignments / to-do                                                */
+/* ------------------------------------------------------------------ */
+
+/** Teacher creates/edits an assignment. `dueAt` is a datetime-local string
+ *  ("YYYY-MM-DDTHH:mm") or "". `studentIds` empty/undefined ⇒ whole class. */
+export const assignmentSchema = z.object({
+  title: z.string().trim().min(1, "กรอกหัวข้องาน").max(200),
+  details: z.string().trim().max(5000).optional(),
+  classId: z.string().min(1, "เลือกห้องเรียน"),
+  dueAt: z.string().trim().optional(),
+  studentIds: z.array(z.string().min(1)).optional(),
+  attachmentIds: z.array(z.string().min(1)).optional(),
+});
+export type AssignmentInput = z.infer<typeof assignmentSchema>;
+
+/** Student creates/edits a personal to-do item. */
+export const personalTodoSchema = z.object({
+  title: z.string().trim().min(1, "กรอกชื่องาน").max(200),
+  details: z.string().trim().max(2000).optional(),
+  dueAt: z.string().trim().optional(),
+});
+export type PersonalTodoInput = z.infer<typeof personalTodoSchema>;
 
 export { roleEnum };

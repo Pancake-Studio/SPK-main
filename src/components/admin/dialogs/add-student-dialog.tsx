@@ -15,15 +15,25 @@ export function AddStudentDialog({ classes }: { classes: Option[] }) {
     >
       {({ fieldErrors }) => (
         <>
-          <FormField name="name" label="ชื่อ-นามสกุล" required error={fieldErrors?.name} />
+          <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <FormField name="title" label="คำนำหน้า" placeholder="เด็กชาย / นางสาว" error={fieldErrors?.title} />
+            <FormField name="name" label="ชื่อ-นามสกุล" required error={fieldErrors?.name} />
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField name="email" label="อีเมล" type="email" required error={fieldErrors?.email} />
             <FormField name="studentCode" label="รหัสนักเรียน" required error={fieldErrors?.studentCode} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField name="classId" label="ห้องเรียน" options={classes} required error={fieldErrors?.classId} />
-            <FormField name="password" label="รหัสผ่าน (ไม่บังคับ)" type="password" error={fieldErrors?.password} />
+            <FormField
+              name="rollNumber"
+              label="เลขที่ (ห้ามซ้ำในห้อง)"
+              type="number"
+              placeholder="เช่น 1"
+              error={fieldErrors?.rollNumber}
+            />
           </div>
+          <FormField name="password" label="รหัสผ่าน (ไม่บังคับ)" type="password" error={fieldErrors?.password} />
         </>
       )}
     </EntityFormDialog>

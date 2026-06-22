@@ -68,6 +68,18 @@ function uniqueMessage(e: unknown, label: string): string | null {
   return null;
 }
 
+/** Student-specific: surface the friendly "เลขที่ซ้ำ" message, plus the
+ *  roll-number / email DB-unique backstops. */
+function studentDupMessage(e: unknown): string | null {
+  if (e instanceof Error && e.message.includes("เลขที่")) return e.message;
+  if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
+    const target = String((e as { meta?: { target?: unknown } }).meta?.target ?? "");
+    if (target.includes("rollNumber")) return "เลขที่นี้ถูกใช้แล้วในห้องนี้";
+    return "อีเมล/รหัสนักเรียน นี้ถูกใช้งานแล้ว";
+  }
+  return null;
+}
+
 /* -------------------------------- Teachers ------------------------------ */
 
 export async function createTeacherAction(
@@ -128,7 +140,7 @@ export async function createStudentAction(
   try {
     await createStudent(parsed.data);
   } catch (e) {
-    return fail(uniqueMessage(e, "อีเมล/รหัสนักเรียน") ?? "ไม่สามารถเพิ่มนักเรียนได้");
+    return fail(studentDupMessage(e) ?? "ไม่สามารถเพิ่มนักเรียนได้");
   }
   revalidatePath("/admin/students");
   return ok("เพิ่มนักเรียนเรียบร้อยแล้ว");
@@ -151,7 +163,7 @@ export async function updateStudentAction(
   try {
     await updateStudent(parsed.data);
   } catch (e) {
-    return fail(uniqueMessage(e, "อีเมล/รหัสนักเรียน") ?? "ไม่สามารถแก้ไขนักเรียนได้");
+    return fail(studentDupMessage(e) ?? "ไม่สามารถแก้ไขนักเรียนได้");
   }
   revalidatePath("/admin/students");
   return ok("แก้ไขนักเรียนเรียบร้อยแล้ว");

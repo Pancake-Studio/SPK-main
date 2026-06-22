@@ -10,7 +10,12 @@ import {
   periodMeta,
   type TimetableSlot,
 } from "@/lib/timetable";
-import { PERIODS } from "@/lib/constants";
+import {
+  DEFAULT_BELL_SLOTS,
+  nextClassSlot,
+  type BellSlotData,
+} from "@/lib/bell-schedule";
+import type { DayKey } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 type Variant = "teacher" | "class";
@@ -20,13 +25,15 @@ function SlotCard({
   slot,
   variant,
   tone,
+  bellSlots,
 }: {
   heading: string;
   slot: TimetableSlot | null;
   variant: Variant;
   tone: "current" | "next";
+  bellSlots: BellSlotData[];
 }) {
-  const meta = slot ? periodMeta(slot.period) : null;
+  const meta = slot ? periodMeta(slot.period, bellSlots) : null;
   return (
     <Card
       className={cn(
@@ -84,9 +91,15 @@ function SlotCard({
 export function NowNext({
   slots,
   variant = "class",
+  bellSlots = DEFAULT_BELL_SLOTS,
+  dayOverride,
 }: {
   slots: TimetableSlot[];
   variant?: Variant;
+  bellSlots?: BellSlotData[];
+  /** Effective weekday for lesson lookup (e.g. after a whole-day swap).
+   *  When set, its lessons are shown instead of the real weekday's. */
+  dayOverride?: DayKey | null;
 }) {
   const grid = React.useMemo(() => buildGrid(slots), [slots]);
   const [now, setNow] = React.useState<Date | null>(null);
@@ -96,29 +109,36 @@ export function NowNext({
     return () => clearInterval(t);
   }, []);
 
-  const today = now ? dayKeyForDate(now) : null;
-  const curP = now ? currentPeriodNo(now) : null;
+  const realToday = now ? dayKeyForDate(now) : null;
+  // Which day's lessons to show today (swap-aware when a dayOverride is given).
+  const lessonDay = dayOverride !== undefined ? dayOverride : realToday;
+  const curP = now ? currentPeriodNo(now, bellSlots) : null;
 
-  const currentSlot = today && curP ? (grid[today]?.[curP] ?? null) : null;
+  const currentSlot = lessonDay && curP ? (grid[lessonDay]?.[curP] ?? null) : null;
 
-  // Next slot today: first period starting after `now` that has a class.
+  // Next slot today: first class period starting after `now` that has a lesson.
   let nextSlot: TimetableSlot | null = null;
-  if (now && today) {
-    const mins = now.getHours() * 60 + now.getMinutes();
-    for (const p of PERIODS) {
-      const [h, m] = p.start.split(":").map(Number);
-      const startMins = (h ?? 0) * 60 + (m ?? 0);
-      if (startMins > mins && grid[today]?.[p.period]) {
-        nextSlot = grid[today]![p.period]!;
+  if (now && realToday && lessonDay) {
+    let cursor = now;
+    for (let guard = 0; guard < 20; guard++) {
+      const cand = nextClassSlot(bellSlots, cursor);
+      if (!cand || cand.periodNumber == null) break;
+      const lesson = grid[lessonDay]?.[cand.periodNumber];
+      if (lesson) {
+        nextSlot = lesson;
         break;
       }
+      // skip to just after this candidate's start and keep looking
+      const [h, m] = cand.startTime.split(":").map(Number);
+      cursor = new Date(now);
+      cursor.setHours(h ?? 0, (m ?? 0) + 1, 0, 0);
     }
   }
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <SlotCard heading="คาบปัจจุบัน" slot={currentSlot} variant={variant} tone="current" />
-      <SlotCard heading="คาบถัดไป" slot={nextSlot} variant={variant} tone="next" />
+      <SlotCard heading="คาบปัจจุบัน" slot={currentSlot} variant={variant} tone="current" bellSlots={bellSlots} />
+      <SlotCard heading="คาบถัดไป" slot={nextSlot} variant={variant} tone="next" bellSlots={bellSlots} />
     </div>
   );
 }

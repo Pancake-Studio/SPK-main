@@ -5,7 +5,8 @@ import { EntityFormDialog } from "../entity-form-dialog";
 import { FormField } from "../form-field";
 import { SelectField, type Option } from "../select-field";
 import { createScheduleAction } from "@/server/actions/admin.actions";
-import { DAYS, PERIODS } from "@/lib/constants";
+import { DAYS } from "@/lib/constants";
+import { DEFAULT_BELL_SLOTS, classSlots, type BellSlotData } from "@/lib/bell-schedule";
 
 const dayOptions: Option[] = DAYS.map((d) => ({ value: d.key, label: `${d.labelTh} (${d.label})` }));
 
@@ -14,22 +15,24 @@ export function AddScheduleDialog({
   subjects,
   teachers,
   occupied,
+  bellSlots = DEFAULT_BELL_SLOTS,
 }: {
   classes: Option[];
   subjects: Option[];
   teachers: Option[];
   /** Map of `${classId}__${day}` → periods already used by that class. */
   occupied: Record<string, number[]>;
+  bellSlots?: BellSlotData[];
 }) {
   const [classId, setClassId] = React.useState("");
   const [day, setDay] = React.useState("");
 
   // A class can have only one lesson per (day, period) — disable taken periods.
   const taken = new Set(classId && day ? occupied[`${classId}__${day}`] ?? [] : []);
-  const periodOptions: Option[] = PERIODS.map((p) => ({
-    value: String(p.period),
-    label: `คาบ ${p.period} · ${p.start}–${p.end}${taken.has(p.period) ? " · ไม่ว่าง" : ""}`,
-    disabled: taken.has(p.period),
+  const periodOptions: Option[] = classSlots(bellSlots).map((p) => ({
+    value: String(p.periodNumber),
+    label: `${p.label} · ${p.startTime}–${p.endTime}${taken.has(p.periodNumber!) ? " · ไม่ว่าง" : ""}`,
+    disabled: taken.has(p.periodNumber!),
   }));
   const className = classes.find((c) => c.value === classId)?.label;
 

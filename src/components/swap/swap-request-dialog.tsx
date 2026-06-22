@@ -30,6 +30,7 @@ import { TimetableGrid } from "@/components/timetable/timetable-grid";
 import { createSwapAction } from "@/server/actions/swap.actions";
 import { initialActionState } from "@/server/actions/_helpers";
 import { dayMeta, type TimetableSlot } from "@/lib/timetable";
+import { DEFAULT_BELL_SLOTS, type BellSlotData } from "@/lib/bell-schedule";
 import { cn } from "@/lib/utils";
 
 export type SwapTeacher = { id: string; name: string; slots: TimetableSlot[] };
@@ -42,10 +43,12 @@ export function SwapRequestDialog({
   mySlots,
   teachers,
   triggerClassName,
+  bellSlots = DEFAULT_BELL_SLOTS,
 }: {
   mySlots: TimetableSlot[];
   teachers: SwapTeacher[];
   triggerClassName?: string;
+  bellSlots?: BellSlotData[];
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -56,6 +59,8 @@ export function SwapRequestDialog({
     createSwapAction,
     initialActionState,
   );
+
+
 
   // Same-classroom rule (#2): a target period is only valid if it belongs to the
   // EXACT same classroom (classId) as the source period.
@@ -72,7 +77,19 @@ export function SwapRequestDialog({
         : [],
     [source, teachers],
   );
+
+  // Is the selected teacher free at the source's time? (If not, we can't swap.)
   const targetTeacher = eligibleTeachers.find((t) => t.id === teacherId) ?? null;
+
+  const isTargetFreeAtSourceTime = React.useCallback(
+    (targetSlot: TimetableSlot) => {
+      if (!source || !targetTeacher) return false;
+      return !targetTeacher.slots.some(
+        (s) => s.day === source.day && s.period === source.period
+      );
+    },
+    [source, targetTeacher]
+  );
 
   function reset() {
     setSource(null);
@@ -134,6 +151,7 @@ export function SwapRequestDialog({
             <TimetableGrid
               slots={mySlots}
               variant="teacher"
+              bellSlots={bellSlots}
               interactive
               highlightCurrent={false}
               selectedSlotId={source?.id ?? null}
@@ -215,17 +233,20 @@ export function SwapRequestDialog({
               <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
                 เลือกครูก่อน เพื่อแสดงตารางสอนทั้งสัปดาห์ของครูคนนั้น
               </p>
-            ) : (
+            ) : source ? (
               <>
                 <TimetableGrid
                   slots={targetTeacher.slots}
                   variant="teacher"
+                  bellSlots={bellSlots}
                   interactive
                   highlightCurrent={false}
                   selectedSlotId={target?.id ?? null}
                   onSelectSlot={setTarget}
-                  selectableSlot={isSameClass}
-                  blockedHint={`แลกไม่ได้: คนละห้อง (ต้องเป็นห้อง ${source?.className})`}
+                  selectableSlot={(s: TimetableSlot) =>
+                    isSameClass(s) && isTargetFreeAtSourceTime(s)
+                  }
+                  blockedHint={`เลือกไม่ได้: ต้องเป็นคาบห้อง ${source.className} และครูต้องว่างในวัน${dayMeta(source.day)?.labelTh ?? source.day} คาบ ${source.period}`}
                 />
                 {target && (
                   <Badge variant="secondary" className="font-normal">
@@ -233,7 +254,7 @@ export function SwapRequestDialog({
                   </Badge>
                 )}
               </>
-            )}
+            ) : null}
           </div>
 
           <div className="space-y-1.5">

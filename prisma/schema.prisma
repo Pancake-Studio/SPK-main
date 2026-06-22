@@ -112,20 +112,27 @@ model Teacher {
   schedules            Schedule[]
   swapRequestsMade     SwapRequest[] @relation("SwapRequester")
   swapRequestsReceived SwapRequest[] @relation("SwapTarget")
+  assignments          Assignment[]
 
   @@index([department])
 }
 
 /// Student profile (1:1 with a User whose role = STUDENT).
 model Student {
-  id          String @id @default(cuid())
-  userId      String @unique
-  studentCode String @unique
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  studentCode String  @unique
+  title       String? // เด็กชาย / เด็กหญิง / นาย / นางสาว
+  rollNumber  Int? // เลขที่ในห้อง — unique per class (NULLs allowed/distinct)
   classId     String
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   class Class @relation(fields: [classId], references: [id])
 
+  submissions   AssignmentSubmission[]
+  personalTodos PersonalTodo[]
+
+  @@unique([classId, rollNumber])
   @@index([classId])
 }
 
@@ -136,8 +143,9 @@ model Class {
   gradeLevel String
   room       String?
 
-  students  Student[]
-  schedules Schedule[]
+  students    Student[]
+  schedules   Schedule[]
+  assignments Assignment[]
 
   @@index([gradeLevel])
 }
@@ -258,6 +266,156 @@ model Announcement {
 
   @@index([audience])
   @@index([createdAt])
+}
+
+/// A named bell-schedule template: the ordered list of daily time slots
+/// (home room, class periods, breaks, lunch) shared by every classroom.
+/// Exactly one row is `isDefault` = the standard school-wide schedule; other
+/// rows are alternate templates (e.g. sports day, exam day) that an admin can
+/// pin to a specific calendar date via `ScheduleOverride`.
+model BellSchedule {
+  id        String     @id @default(cuid())
+  name      String
+  isDefault Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  slots     BellSlot[]
+  overrides ScheduleOverride[]
+
+  @@index([isDefault])
+}
+
+/// One row in a bell schedule's day. `kind` distinguishes teaching periods
+/// from non-teaching rows (home room / breaks / lunch). Times are stored
+/// explicitly (denormalised) for trivial rendering + "current period" lookups,
+/// and re-chained from `order` whenever slots are reordered/swapped.
+/// `periodNumber` is set only for CLASS rows and is what `Schedule.period`
+/// references — it stays attached to the slot as it moves, so swapping two
+/// periods moves the lessons (looked up by periodNumber) with the time block.
+model BellSlot {
+  id           String  @id @default(cuid())
+  scheduleId   String
+  order        Int
+  kind         String  // HOMEROOM | CLASS | BREAK | LUNCH
+  label        String
+  startTime    String  // "HH:MM" 24h
+  endTime      String  // "HH:MM" 24h
+  periodNumber Int?    // CLASS rows only
+
+  schedule BellSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+}
+
+/// Pins a specific calendar date to a (usually alternate) bell schedule, so a
+/// day can temporarily use different times / period ordering without touching
+/// the default template. Cleared automatically once the date passes (the app
+/// only reads overrides for today/future).
+model ScheduleOverride {
+  id             String   @id @default(cuid())
+  date           String   @unique // "YYYY-MM-DD" (local school date)
+  bellScheduleId String
+  note           String?
+  createdAt      DateTime @default(now())
+
+  bellSchedule BellSchedule @relation(fields: [bellScheduleId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+}
+
+/// Whole-day timetable swap for ONE specific week (temporary). e.g. "this week,
+/// Monday and Tuesday are exchanged" → on that Monday every class follows its
+/// Tuesday schedule and vice-versa, then it reverts next week. School-wide.
+/// `weekStart` is the Monday (YYYY-MM-DD) of the affected week; `dayA`/`dayB`
+/// are the two weekdays exchanged. A weekday appears in at most one swap/week.
+model DaySwap {
+  id        String   @id @default(cuid())
+  weekStart String // Monday of the week, "YYYY-MM-DD"
+  dayA      String // MON..FRI
+  dayB      String // MON..FRI
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([weekStart])
+}
+
+/// Homework / task a teacher assigns to a class (or specific students in it).
+/// Recipients are materialised as `AssignmentSubmission` rows (one per student)
+/// so completion + file submission are tracked per student.
+model Assignment {
+  id        String    @id @default(cuid())
+  teacherId String
+  classId   String
+  title     String
+  details   String? // plain-text description
+  dueAt     DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  teacher     Teacher                @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class       Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  attachments Attachment[] // files the teacher attached (images / PDFs)
+  submissions AssignmentSubmission[]
+
+  @@index([teacherId])
+  @@index([classId])
+}
+
+/// One student's instance of an assignment: their done state + submitted files.
+model AssignmentSubmission {
+  id           String    @id @default(cuid())
+  assignmentId String
+  studentId    String
+  done         Boolean   @default(false)
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  assignment  Assignment   @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attachments Attachment[] // files the student uploaded to submit
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId])
+}
+
+/// A student's own private to-do item (not assigned by a teacher).
+model PersonalTodo {
+  id          String    @id @default(cuid())
+  studentId   String
+  title       String
+  details     String?
+  dueAt       DateTime?
+  done        Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+}
+
+/// A stored file (image / PDF). Bytes live in the DB for portability across
+/// SQLite↔Postgres and behind the reverse proxy (no filesystem dependency).
+/// Linked to either an Assignment (teacher's files) or a Submission (student's).
+model Attachment {
+  id           String   @id @default(cuid())
+  filename     String
+  mime         String
+  size         Int
+  data         Bytes
+  uploaderId   String // User.id who uploaded it
+  assignmentId String?
+  submissionId String?
+  createdAt    DateTime @default(now())
+
+  assignment Assignment?           @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  submission AssignmentSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([submissionId])
+  @@index([uploaderId])
 }
 
 /// General security audit log (logins, role-sensitive actions, imports).

@@ -16,18 +16,21 @@ import { AddScheduleDialog } from "@/components/admin/dialogs/add-schedule-dialo
 import { DataSyncButton } from "@/components/admin/data-sync-button";
 import { ImportScheduleDialog } from "@/components/admin/dialogs/import-schedule-dialog";
 import { SchedulesTable, type ScheduleRow } from "@/components/admin/schedules-table";
+import { getDefaultSchedule } from "@/server/services/bell-schedule.service";
 import { dayMeta } from "@/lib/timetable";
 
 export const metadata = { title: "จัดการตารางสอน" };
 
 export default async function AdminSchedulePage() {
   await requireAdmin();
-  const [schedules, classes, subjects, teachers] = await Promise.all([
+  const [schedules, classes, subjects, teachers, bell] = await Promise.all([
     listSchedules(),
     listClasses(),
     listSubjects(),
     listTeachers(),
+    getDefaultSchedule(),
   ]);
+  const bellSlots = bell.slots;
 
   const classOptions = classes.map((c) => ({ value: c.id, label: c.className }));
   const subjectOptions = subjects.map((s) => ({ value: s.id, label: `${s.subjectName} (${s.subjectCode})` }));
@@ -65,6 +68,7 @@ export default async function AdminSchedulePage() {
           subjects={subjectOptions}
           teachers={teacherOptions}
           occupied={occupied}
+          bellSlots={bellSlots}
         />
       </PageHeader>
 
@@ -83,6 +87,7 @@ export default async function AdminSchedulePage() {
           occupied={occupied}
           deleteOne={deleteScheduleAction}
           deleteMany={deleteSchedulesAction}
+          bellSlots={bellSlots}
         />
       )}
     </div>

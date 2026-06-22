@@ -1,6 +1,7 @@
 import { CalendarOff } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { slotsForDay, periodMeta, type TimetableSlot } from "@/lib/timetable";
+import { DEFAULT_BELL_SLOTS, type BellSlotData } from "@/lib/bell-schedule";
 import type { DayKey } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -10,11 +11,13 @@ export function TodaySchedule({
   day,
   variant = "class",
   currentPeriod,
+  bellSlots = DEFAULT_BELL_SLOTS,
 }: {
   slots: TimetableSlot[];
   day: DayKey | null;
   variant?: "teacher" | "class";
   currentPeriod?: number | null;
+  bellSlots?: BellSlotData[];
 }) {
   if (!day) {
     return (
@@ -40,7 +43,7 @@ export function TodaySchedule({
   return (
     <ul className="divide-y divide-border">
       {list.map((s) => {
-        const meta = periodMeta(s.period);
+        const meta = periodMeta(s.period, bellSlots);
         const isNow = currentPeriod === s.period;
         return (
           <li

@@ -43,6 +43,7 @@ export const NOTIFICATION_TYPES = {
   SWAP_CANCELLED: "SWAP_CANCELLED",
   SCHEDULE_CHANGED: "SCHEDULE_CHANGED",
   ANNOUNCEMENT: "ANNOUNCEMENT",
+  ASSIGNMENT: "ASSIGNMENT",
   EMERGENCY: "EMERGENCY",
 } as const;
 export type NotificationType =
@@ -59,19 +60,10 @@ export const DAYS = [
 export type DayKey = (typeof DAYS)[number]["key"];
 export const DAY_KEYS = DAYS.map((d) => d.key) as DayKey[];
 
-/** Daily periods with their clock times (used by the timetable + "current period"). */
-export const PERIODS = [
-  { period: 1, start: "08:30", end: "09:20" },
-  { period: 2, start: "09:20", end: "10:10" },
-  { period: 3, start: "10:25", end: "11:15" },
-  { period: 4, start: "11:15", end: "12:05" },
-  { period: 5, start: "13:00", end: "13:50" },
-  { period: 6, start: "13:50", end: "14:40" },
-  { period: 7, start: "14:55", end: "15:45" },
-  { period: 8, start: "15:45", end: "16:35" },
-] as const;
-export type PeriodNo = (typeof PERIODS)[number]["period"];
-export const PERIOD_NUMBERS: number[] = PERIODS.map((p) => p.period);
+// Daily period times now live in the DB-backed bell schedule
+// (`src/lib/bell-schedule.ts` + the BellSchedule/BellSlot models). Highest
+// class-period number we allow on a schedule slot (validation bound).
+export const MAX_PERIOD_NUMBER = 20;
 
 /** Auth/session config. */
 // New name for the Auth.js (NextAuth v5) JWT cookie. Deliberately *not*

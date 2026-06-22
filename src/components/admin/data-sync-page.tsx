@@ -56,7 +56,7 @@ const ENTITIES: EntityConfig[] = [
     key: "students",
     label: "นักเรียน",
     description: "ดาวน์โหลด/อัปโหลดข้อมูลนักเรียน",
-    columns: ["studentCode", "name", "email", "className"],
+    columns: ["studentCode", "rollNumber", "title", "name", "email", "className"],
     exportAction: exportStudentsAction,
     syncAction: syncStudentsAction,
   },

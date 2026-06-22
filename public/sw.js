@@ -1,26 +1,36 @@
 /* SPK Platform service worker — install + Web Push + click handling */
-/* sw-version: 3 — robust push handler + dev-safe fetch passthrough + Android fixes */
+/* sw-version: 4 — no clients.claim() (fixes first-load "can't click until refresh") */
 
 self.addEventListener("install", (event) => {
+  // Activate this SW as soon as it installs, so updates land on the next load.
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  // IMPORTANT: do NOT call self.clients.claim() here.
+  // Claiming takes control of pages that were ALREADY open and uncontrolled.
+  // Doing that mid-session — while Next.js's App Router is still hydrating and
+  // booting — changes the page's SW controller in-flight, which intermittently
+  // left the very first page load non-interactive (clicks/links dead) until a
+  // manual refresh, and produced "Failed to fetch RSC payload / Load failed".
+  // Web Push does NOT need the SW to control open pages (it's tied to the
+  // registration + subscription), so we simply let the SW control each page
+  // from its *next* load onward. No mid-session takeover = no first-load lockup.
 });
 
-// Pass-through fetch handler. We deliberately do NOT cache anything;
-// this SW only exists for Web Push + PWA installability.
-// In Next.js dev mode the `_next` chunks must reach the dev server
-// unimpeded, so we bail out early for those.
+// Pass-through fetch handler — we deliberately do NOT cache or intercept
+// anything. It exists only so the app stays PWA-installable; every request
+// falls through to the network (we never call event.respondWith()).
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-  // Never intercept Next.js dev/build chunks or the dev-server HMR socket
+  const req = event.request;
+  // Never touch page navigations or Next.js RSC/build chunks — let the browser
+  // and Next.js router handle them untouched (avoids navigation/hydration bugs).
+  if (req.mode === "navigate") return;
+  const url = new URL(req.url);
   if (url.pathname.startsWith("/_next") || url.pathname === "/__webpack_hmr") {
     return;
   }
-  // Everything else falls through to the network automatically
-  // because we do not call event.respondWith().
+  // Everything else also falls through to the network automatically.
 });
 
 self.addEventListener("push", (event) => {
@@ -40,7 +50,7 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "SPK Platform";
   const options = {
     body: payload.message || "",
-    icon: payload.icon || "/icon-192.png",
+    icon: payload.icon || "/icon-192-ro.png",
     badge: "/badge.png",
     tag: payload.tag || undefined,
     renotify: Boolean(payload.tag),

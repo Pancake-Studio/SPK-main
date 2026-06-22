@@ -8,6 +8,7 @@ import {
   Bell,
   Ban,
   Undo2,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react";
 import { NOTIFICATION_TYPES } from "@/lib/constants";
@@ -21,6 +22,7 @@ const MAP: Record<string, { icon: LucideIcon; className: string }> = {
   [NOTIFICATION_TYPES.SWAP_CANCELLED]: { icon: Undo2, className: "bg-info/15 text-info" },
   [NOTIFICATION_TYPES.SCHEDULE_CHANGED]: { icon: CalendarClock, className: "bg-info/15 text-info" },
   [NOTIFICATION_TYPES.ANNOUNCEMENT]: { icon: Megaphone, className: "bg-gold/15 text-gold-foreground dark:text-yellow" },
+  [NOTIFICATION_TYPES.ASSIGNMENT]: { icon: ClipboardList, className: "bg-primary/15 text-primary" },
   [NOTIFICATION_TYPES.EMERGENCY]: { icon: TriangleAlert, className: "bg-destructive/15 text-destructive" },
 };
 

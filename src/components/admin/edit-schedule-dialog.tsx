@@ -5,7 +5,8 @@ import { EntityFormDialog } from "@/components/admin/entity-form-dialog";
 import { FormField } from "@/components/admin/form-field";
 import { SelectField, type Option } from "@/components/admin/select-field";
 import { Button } from "@/components/ui/button";
-import { DAYS, PERIODS } from "@/lib/constants";
+import { DAYS } from "@/lib/constants";
+import { DEFAULT_BELL_SLOTS, classSlots, type BellSlotData } from "@/lib/bell-schedule";
 import { Pencil } from "lucide-react";
 import { updateScheduleAction } from "@/server/actions/admin.actions";
 import type { ScheduleRow } from "@/components/admin/schedules-table";
@@ -21,12 +22,14 @@ export function EditScheduleDialog({
   subjects,
   teachers,
   occupied,
+  bellSlots = DEFAULT_BELL_SLOTS,
 }: {
   schedule: ScheduleRow;
   classes: Option[];
   subjects: Option[];
   teachers: Option[];
   occupied?: Record<string, number[]>;
+  bellSlots?: BellSlotData[];
 }) {
   const [classId, setClassId] = React.useState(schedule.classId);
   const [day, setDay] = React.useState(schedule.day);
@@ -39,10 +42,10 @@ export function EditScheduleDialog({
         )
       : [],
   );
-  const periodOptions: Option[] = PERIODS.map((p) => ({
-    value: String(p.period),
-    label: `คาบ ${p.period} · ${p.start}–${p.end}${taken.has(p.period) ? " · ไม่ว่าง" : ""}`,
-    disabled: taken.has(p.period),
+  const periodOptions: Option[] = classSlots(bellSlots).map((p) => ({
+    value: String(p.periodNumber),
+    label: `${p.label} · ${p.startTime}–${p.endTime}${taken.has(p.periodNumber!) ? " · ไม่ว่าง" : ""}`,
+    disabled: taken.has(p.periodNumber!),
   }));
 
   return (

@@ -186,11 +186,51 @@ export async function deleteTeachers(ids: string[]) {
 export function listStudents() {
   return db.student.findMany({
     include: { user: true, class: true },
-    orderBy: { studentCode: "asc" },
+    orderBy: [{ class: { className: "asc" } }, { rollNumber: "asc" }, { studentCode: "asc" }],
   });
 }
 
+/** Paginated + searchable student list (ordered by class, then เลขที่). */
+export async function listStudentsPaged(opts: {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  classId?: string;
+}) {
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(100, Math.max(5, opts.pageSize ?? 25));
+  const q = opts.q?.trim();
+  const where = {
+    ...(opts.classId ? { classId: opts.classId } : {}),
+    ...(q
+      ? { OR: [{ user: { name: { contains: q } } }, { studentCode: { contains: q } }] }
+      : {}),
+  };
+  const [total, rows] = await Promise.all([
+    db.student.count({ where }),
+    db.student.findMany({
+      where,
+      include: { user: true, class: true },
+      orderBy: [{ class: { className: "asc" } }, { rollNumber: "asc" }, { studentCode: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+  return { rows, total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+/** Reject a roll number already used by another student in the same class. */
+async function assertRollFree(classId: string, rollNumber?: number | null, excludeStudentId?: string) {
+  if (rollNumber == null) return;
+  const taken = await db.student.findFirst({
+    where: { classId, rollNumber, ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}) },
+    select: { id: true },
+  });
+  if (taken) throw new Error(`เลขที่ ${rollNumber} มีอยู่แล้วในห้องนี้`);
+}
+
 export async function createStudent(input: StudentInput) {
+  await assertRollFree(input.classId, input.rollNumber);
   const passwordHash = await hashPassword(input.password || DEFAULT_PASSWORD);
   return db.user.create({
     data: {
@@ -199,7 +239,12 @@ export async function createStudent(input: StudentInput) {
       role: ROLES.STUDENT,
       name: input.name,
       student: {
-        create: { studentCode: input.studentCode, classId: input.classId },
+        create: {
+          studentCode: input.studentCode,
+          title: input.title || null,
+          rollNumber: input.rollNumber ?? null,
+          classId: input.classId,
+        },
       },
     },
   });
@@ -214,6 +259,7 @@ export async function deleteStudent(studentId: string) {
 export async function updateStudent(input: StudentUpdateInput) {
   const student = await db.student.findUnique({ where: { id: input.id }, select: { userId: true } });
   if (!student) throw new Error("ไม่พบข้อมูลนักเรียน");
+  await assertRollFree(input.classId, input.rollNumber, input.id);
   const updates: { passwordHash?: string } = {};
   if (input.password) {
     updates.passwordHash = await hashPassword(input.password);
@@ -231,6 +277,8 @@ export async function updateStudent(input: StudentUpdateInput) {
       where: { id: input.id },
       data: {
         studentCode: input.studentCode,
+        title: input.title || null,
+        rollNumber: input.rollNumber ?? null,
         classId: input.classId,
       },
     }),
@@ -529,12 +577,14 @@ export async function exportTeachers() {
 export async function exportStudents() {
   const rows = await db.student.findMany({
     include: { user: true, class: true },
-    orderBy: { studentCode: "asc" },
+    orderBy: [{ class: { className: "asc" } }, { rollNumber: "asc" }, { studentCode: "asc" }],
   });
-  const columns = ["studentCode", "name", "email", "className"];
+  const columns = ["studentCode", "rollNumber", "title", "name", "email", "className"];
   return bookFromRows(
     rows.map((s) => ({
       studentCode: s.studentCode,
+      rollNumber: s.rollNumber ?? "",
+      title: s.title ?? "",
       name: s.user.name,
       email: s.user.email,
       className: s.class?.className ?? "",
@@ -677,6 +727,8 @@ export async function syncStudents(rows: SyncRow[]): Promise<SyncResult> {
       name: str(row, "name"),
       email: str(row, "email"),
       studentCode: str(row, "studentCode"),
+      title: str(row, "title") || undefined,
+      rollNumber: str(row, "rollNumber") || undefined,
       classId,
       password: undefined,
     });

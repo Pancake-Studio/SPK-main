@@ -1,5 +1,6 @@
-import { DAYS } from "@/lib/constants";
+import { DAYS, type DayKey } from "@/lib/constants";
 import { slotsForDay, periodMeta, dayMeta, type TimetableSlot } from "@/lib/timetable";
+import { DEFAULT_BELL_SLOTS, type BellSlotData } from "@/lib/bell-schedule";
 import { Card } from "@/components/ui/card";
 import type { SwapMarkClient } from "./timetable-grid";
 import { cn } from "@/lib/utils";
@@ -9,27 +10,39 @@ export function WeekCards({
   slots,
   variant = "class",
   swapMarks,
+  bellSlots = DEFAULT_BELL_SLOTS,
+  dayRemap,
 }: {
   slots: TimetableSlot[];
   variant?: "teacher" | "class";
   swapMarks?: Record<string, SwapMarkClient>;
+  bellSlots?: BellSlotData[];
+  /** Whole-day swap for the current week (display weekday → template weekday). */
+  dayRemap?: Partial<Record<DayKey, DayKey>>;
 }) {
   return (
     <div className="space-y-4">
       {DAYS.map((d) => {
-        const list = slotsForDay(slots, d.key);
+        const from = dayRemap?.[d.key];
+        const list = slotsForDay(slots, from ?? d.key);
         return (
-          <Card key={d.key} className="p-4">
+          <Card key={d.key} className={cn("p-4", from && "ring-1 ring-amber-400/50")}>
             <p className="mb-3 font-semibold text-foreground">
               {d.labelTh}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">{d.label}</span>
+              {from ? (
+                <span className="ml-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                  สลับ · ใช้ตาราง{dayMeta(from)?.labelTh ?? from}
+                </span>
+              ) : (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">{d.label}</span>
+              )}
             </p>
             {list.length === 0 ? (
               <p className="text-sm text-muted-foreground">ไม่มีคาบเรียน</p>
             ) : (
               <ul className="space-y-2">
                 {list.map((s) => {
-                  const meta = periodMeta(s.period);
+                  const meta = periodMeta(s.period, bellSlots);
                   const mark = swapMarks?.[s.id];
                   return (
                     <li

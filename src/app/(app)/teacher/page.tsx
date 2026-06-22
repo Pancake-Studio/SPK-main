@@ -1,6 +1,8 @@
 import { CalendarDays, Layers, Inbox, Send } from "lucide-react";
 import { requireTeacherProfile } from "@/lib/auth";
 import { getTeacherSchedule } from "@/server/services/schedule.service";
+import { getEffectiveSlots } from "@/server/services/bell-schedule.service";
+import { getWeekSwaps } from "@/server/services/day-swap.service";
 import {
   getSwapsForTeacher,
   mapSwapToClient,
@@ -10,8 +12,10 @@ import { StatCard } from "@/components/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NowNext } from "@/components/timetable/now-next";
 import { TodaySchedule } from "@/components/timetable/today-schedule";
+import { DaySwapBanner } from "@/components/timetable/day-swap-banner";
 import { SwapList } from "@/components/swap/swap-list";
 import { dayKeyForDate, currentPeriodNo, slotsForDay } from "@/lib/timetable";
+import { effectiveDayFor, toIsoDate } from "@/lib/day-swap";
 import { SWAP_STATUS } from "@/lib/constants";
 
 export default async function TeacherDashboard() {
@@ -22,9 +26,14 @@ export default async function TeacherDashboard() {
   ]);
 
   const now = new Date();
+  const todayIso = toIsoDate(now);
   const today = dayKeyForDate(now);
-  const curPeriod = currentPeriodNo(now);
-  const todayCount = today ? slotsForDay(slots, today).length : 0;
+  const weekSwaps = await getWeekSwaps(todayIso);
+  // Which weekday's lessons actually run today (whole-day swap aware).
+  const lessonDay = effectiveDayFor(now, weekSwaps);
+  const bellSlots = await getEffectiveSlots(todayIso);
+  const curPeriod = currentPeriodNo(now, bellSlots);
+  const todayCount = lessonDay ? slotsForDay(slots, lessonDay).length : 0;
 
   const pendingIncoming = swaps.incoming.filter((s) => s.status === SWAP_STATUS.PENDING);
   const pendingOutgoing = swaps.outgoing.filter((s) => s.status === SWAP_STATUS.PENDING);
@@ -37,6 +46,8 @@ export default async function TeacherDashboard() {
   return (
     <div>
       <PageHeader title={`สวัสดี, ${user.name}`} description={dateLabel} />
+
+      <DaySwapBanner swaps={weekSwaps} today={today} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="คาบสอนวันนี้" value={todayCount} icon={CalendarDays} accent="primary" />
@@ -58,7 +69,7 @@ export default async function TeacherDashboard() {
       </div>
 
       <div className="mt-6">
-        <NowNext slots={slots} variant="teacher" />
+        <NowNext slots={slots} variant="teacher" bellSlots={bellSlots} dayOverride={lessonDay} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -67,7 +78,7 @@ export default async function TeacherDashboard() {
             <CardTitle>ตารางสอนวันนี้</CardTitle>
           </CardHeader>
           <CardContent>
-            <TodaySchedule slots={slots} day={today} variant="teacher" currentPeriod={curPeriod} />
+            <TodaySchedule slots={slots} day={lessonDay} variant="teacher" currentPeriod={curPeriod} bellSlots={bellSlots} />
           </CardContent>
         </Card>
 

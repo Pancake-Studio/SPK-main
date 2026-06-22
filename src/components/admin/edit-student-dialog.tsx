@@ -24,7 +24,16 @@ export function EditStudentDialog({ student, classes }: { student: StudentRow; c
       {({ fieldErrors }) => (
         <>
           <input type="hidden" name="id" value={student.id} />
-          <FormField name="name" label="ชื่อ-นามสกุล" required defaultValue={student.name} error={fieldErrors?.name} />
+          <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <FormField
+              name="title"
+              label="คำนำหน้า"
+              placeholder="เด็กชาย / นางสาว"
+              defaultValue={student.title ?? ""}
+              error={fieldErrors?.title}
+            />
+            <FormField name="name" label="ชื่อ-นามสกุล" required defaultValue={student.name} error={fieldErrors?.name} />
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
               name="email"
@@ -42,14 +51,24 @@ export function EditStudentDialog({ student, classes }: { student: StudentRow; c
               error={fieldErrors?.studentCode}
             />
           </div>
-          <SelectField
-            name="classId"
-            label="ห้องเรียน"
-            options={classes}
-            required
-            defaultValue={student.classId}
-            error={fieldErrors?.classId}
-          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              name="classId"
+              label="ห้องเรียน"
+              options={classes}
+              required
+              defaultValue={student.classId}
+              error={fieldErrors?.classId}
+            />
+            <FormField
+              name="rollNumber"
+              label="เลขที่ (ห้ามซ้ำในห้อง)"
+              type="number"
+              placeholder="เช่น 1"
+              defaultValue={student.rollNumber != null ? String(student.rollNumber) : ""}
+              error={fieldErrors?.rollNumber}
+            />
+          </div>
           <FormField name="password" label="รหัสผ่าน (เว้นว่างเพื่อเก็บเหมือนเดิม)" type="password" error={fieldErrors?.password} />
         </>
       )}

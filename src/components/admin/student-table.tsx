@@ -24,6 +24,8 @@ import { EditStudentDialog } from "@/components/admin/edit-student-dialog";
 export type StudentRow = {
   id: string;
   studentCode: string;
+  title: string | null;
+  rollNumber: number | null;
   name: string;
   email: string;
   className: string;
@@ -95,6 +97,7 @@ export function StudentTable({ students, classes }: { students: StudentRow[]; cl
                   aria-label="เลือกทั้งหมด"
                 />
               </TableHead>
+              <TableHead className="w-16">เลขที่</TableHead>
               <TableHead>รหัส</TableHead>
               <TableHead>ชื่อ</TableHead>
               <TableHead>อีเมล</TableHead>
@@ -112,8 +115,16 @@ export function StudentTable({ students, classes }: { students: StudentRow[]; cl
                     aria-label={`เลือก ${student.name}`}
                   />
                 </TableCell>
+                <TableCell className="text-center font-semibold text-foreground">
+                  {student.rollNumber ?? <span className="text-muted-foreground">–</span>}
+                </TableCell>
                 <TableCell className="font-mono text-xs">{student.studentCode}</TableCell>
-                <TableCell className="font-medium text-foreground">{student.name}</TableCell>
+                <TableCell className="font-medium text-foreground">
+                  {student.title ? (
+                    <span className="font-normal text-muted-foreground">{student.title} </span>
+                  ) : null}
+                  {student.name}
+                </TableCell>
                 <TableCell className="text-muted-foreground">{student.email}</TableCell>
                 <TableCell>
                   <Badge variant="secondary">{student.className}</Badge>

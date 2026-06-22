@@ -31,18 +31,17 @@ export const metadata: Metadata = {
     template: `%s · ${APP_NAME}`,
   },
   description:
-    "Central digital platform for the school — schedules, period swaps, announcements, and notifications for admins, teachers, and students.",
+    "ศูนย์กลางข้อมูลและเครื่องมือสำหรับครูและนักเรียน โรงเรียนสันติสุขพิยาคม",
   applicationName: APP_NAME,
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "SPK" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "โรงเรียนสันติสุขพิยาคม" },
   icons: {
     icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon-192-ro.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512-ro.png", sizes: "512x512", type: "image/png" },
     ],
     // iOS ignores SVG — needs a PNG apple-touch-icon (also used as PWA home-screen icon).
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: "/icon-512-full-apple.png", sizes: "180x180" }],
   },
 };
 

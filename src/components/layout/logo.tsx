@@ -1,4 +1,4 @@
-import { GraduationCap } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { APP_NAME, SCHOOL_NAME } from "@/lib/constants";
 
@@ -11,9 +11,7 @@ export function Logo({
 }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-        <GraduationCap className="size-5" />
-      </span>
+      <Image src="/icon-spk.png" alt="Logo" width={36} height={36} />
       {withText && (
         <span className="flex flex-col leading-tight">
           <span className="text-sm font-semibold tracking-tight text-foreground">

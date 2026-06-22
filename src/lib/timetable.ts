@@ -1,4 +1,11 @@
-import { DAYS, DAY_KEYS, PERIODS, type DayKey } from "@/lib/constants";
+import { DAYS, DAY_KEYS, type DayKey } from "@/lib/constants";
+import {
+  DEFAULT_BELL_SLOTS,
+  classSlots,
+  currentSlot,
+  nextClassSlot,
+  type BellSlotData,
+} from "@/lib/bell-schedule";
 
 /** A timetable slot flattened for rendering (server- or client-side). */
 export type TimetableSlot = {
@@ -25,33 +32,34 @@ export function dayKeyForDate(date = new Date()): DayKey | null {
   return DAY_KEYS[idx - 1] ?? null;
 }
 
-function minutesOf(hhmm: string) {
-  const [h, m] = hhmm.split(":").map(Number);
-  return (h ?? 0) * 60 + (m ?? 0);
-}
-
-/** The period number active *right now*, or null if outside class hours. */
-export function currentPeriodNo(date = new Date()): number | null {
+/** The class-period number active *right now*, or null if outside class hours.
+ *  Pass the effective bell slots for the day; defaults to the standard schedule. */
+export function currentPeriodNo(
+  date = new Date(),
+  bellSlots: BellSlotData[] = DEFAULT_BELL_SLOTS,
+): number | null {
   if (!dayKeyForDate(date)) return null;
-  const now = date.getHours() * 60 + date.getMinutes();
-  for (const p of PERIODS) {
-    if (now >= minutesOf(p.start) && now < minutesOf(p.end)) return p.period;
-  }
-  return null;
+  const s = currentSlot(bellSlots, date);
+  return s && s.periodNumber != null ? s.periodNumber : null;
 }
 
-/** The next upcoming period today (after `now`), or null. */
-export function nextPeriodNo(date = new Date()): number | null {
+/** The next upcoming class period today (after `now`), or null. */
+export function nextPeriodNo(
+  date = new Date(),
+  bellSlots: BellSlotData[] = DEFAULT_BELL_SLOTS,
+): number | null {
   if (!dayKeyForDate(date)) return null;
-  const now = date.getHours() * 60 + date.getMinutes();
-  for (const p of PERIODS) {
-    if (minutesOf(p.start) > now) return p.period;
-  }
-  return null;
+  const s = nextClassSlot(bellSlots, date);
+  return s?.periodNumber ?? null;
 }
 
-export function periodMeta(period: number) {
-  return PERIODS.find((p) => p.period === period) ?? null;
+/** Time metadata ({ period, start, end }) for a class-period number. */
+export function periodMeta(
+  period: number,
+  bellSlots: BellSlotData[] = DEFAULT_BELL_SLOTS,
+) {
+  const s = classSlots(bellSlots).find((x) => x.periodNumber === period);
+  return s ? { period, start: s.startTime, end: s.endTime } : null;
 }
 
 export function dayMeta(key: string) {
