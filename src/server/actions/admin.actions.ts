@@ -66,11 +66,7 @@ function uniqueMessage(e: unknown, label: string): string | null {
   return null;
 }
 
-/** Surface the friendly "ห้องนี้มีครูที่ปรึกษาแล้ว" guard message. */
-function advisorMessage(e: unknown): string | null {
-  return e instanceof Error && e.message.includes("ที่ปรึกษา") ? e.message : null;
-}
-
+/** Obsolete: a class may now have multiple advisors. */
 /** Student-specific: surface the friendly "เลขที่ซ้ำ" message, plus the
  *  roll-number / email DB-unique backstops. */
 function studentDupMessage(e: unknown): string | null {
@@ -95,7 +91,7 @@ export async function createTeacherAction(
   try {
     await createTeacher(parsed.data);
   } catch (e) {
-    return fail(advisorMessage(e) ?? uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถเพิ่มครูได้");
+    return fail(uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถเพิ่มครูได้");
   }
   revalidatePath("/admin/teachers");
   return ok("เพิ่มครูเรียบร้อยแล้ว");
@@ -118,7 +114,7 @@ export async function updateTeacherAction(
   try {
     await updateTeacher(parsed.data);
   } catch (e) {
-    return fail(advisorMessage(e) ?? uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถแก้ไขครูได้");
+    return fail(uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถแก้ไขครูได้");
   }
   revalidatePath("/admin/teachers");
   return ok("แก้ไขครูเรียบร้อยแล้ว");

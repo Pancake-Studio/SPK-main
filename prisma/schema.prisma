@@ -106,9 +106,9 @@ model Teacher {
   title       String? // Mr. / Mrs. / Ms. / Dr.
   department  String?
   phone       String?
-  // ครูที่ปรึกษา: the homeroom class this teacher advises (1:1). An advisor may
-  // add/edit students ONLY in this class. Nullable @unique → one advisor/class.
-  advisorClassId String? @unique
+  // ครูที่ปรึกษา: the homeroom class this teacher advises. A class may have
+  // multiple advisors, and each advisor manages students in that class.
+  advisorClassId String?
 
   user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   advisorClass Class? @relation("ClassAdvisor", fields: [advisorClassId], references: [id])
@@ -153,7 +153,7 @@ model Class {
   students    Student[]
   schedules   Schedule[]
   assignments Assignment[]
-  advisor     Teacher?  @relation("ClassAdvisor")
+  advisors    Teacher[] @relation("ClassAdvisor")
 
   @@index([gradeLevel])
 }

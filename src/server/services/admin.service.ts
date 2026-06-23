@@ -132,18 +132,8 @@ export function listTeachers() {
   });
 }
 
-/** Reject assigning an advisor class that another teacher already advises. */
-async function assertAdvisorFree(classId: string | null | undefined, excludeTeacherId?: string) {
-  if (!classId) return;
-  const taken = await db.teacher.findFirst({
-    where: { advisorClassId: classId, ...(excludeTeacherId ? { id: { not: excludeTeacherId } } : {}) },
-    include: { user: { select: { name: true } } },
-  });
-  if (taken) throw new Error(`ห้องนี้มีครูที่ปรึกษาแล้ว (${taken.user.name})`);
-}
-
+/** Advisors: a class may have multiple teachers. */
 export async function createTeacher(input: TeacherInput) {
-  await assertAdvisorFree(input.advisorClassId);
   const passwordHash = await hashPassword(input.password || DEFAULT_PASSWORD);
   return db.user.create({
     data: {
@@ -191,7 +181,6 @@ export async function deleteTeacher(teacherId: string) {
 export async function updateTeacher(input: TeacherUpdateInput) {
   const teacher = await db.teacher.findUnique({ where: { id: input.id }, select: { userId: true } });
   if (!teacher) throw new Error("ไม่พบข้อมูลครู");
-  await assertAdvisorFree(input.advisorClassId, input.id);
   const updates: { passwordHash?: string } = {};
   if (input.password) {
     updates.passwordHash = await hashPassword(input.password);
