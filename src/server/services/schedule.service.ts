@@ -15,7 +15,7 @@ type ScheduleWithRelations = {
   day: string;
   period: number;
   room: string | null;
-  subject: { subjectName: string; subjectCode: string; colorHex: string | null };
+  subject: { subjectName: string; subjectCode: string; colorHex: string | null; hideTeacherForStudents: boolean };
   class: { id: string; className: string; gradeLevel: string };
   teacher: { id: string; user: { name: string } };
 };
@@ -29,6 +29,7 @@ export function toSlot(s: ScheduleWithRelations): TimetableSlot {
     subjectName: s.subject.subjectName,
     subjectCode: s.subject.subjectCode,
     colorHex: s.subject.colorHex,
+    hideTeacher: s.subject.hideTeacherForStudents,
     teacherId: s.teacher.id,
     teacherName: s.teacher.user.name,
     classId: s.class.id,

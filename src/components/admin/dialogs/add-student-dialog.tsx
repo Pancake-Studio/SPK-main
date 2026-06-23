@@ -27,7 +27,7 @@ export function AddStudentDialog({ classes }: { classes: Option[] }) {
             <SelectField name="classId" label="ห้องเรียน" options={classes} required error={fieldErrors?.classId} />
             <FormField
               name="rollNumber"
-              label="เลขที่ (ห้ามซ้ำในห้อง)"
+              label="เลขที่"
               type="number"
               placeholder="เช่น 1"
               error={fieldErrors?.rollNumber}

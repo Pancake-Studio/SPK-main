@@ -29,46 +29,54 @@ export default async function TeacherAssignmentsByClassPage({
   const selectedClass = allClasses.find((c) => c.className === className);
   if (!selectedClass) notFound();
 
-  const groupClassIds = expandClassGroupIds(className, allClasses);
+  // The dotted sub-rooms are the real classes that contain students.
+  const groupClassIds = expandClassGroupIds(className, allClasses, { includeBase: false });
 
   const [assignments] = await Promise.all([
     listTeacherAssignmentsByClassName(teacher.id, className),
   ]);
 
-  // Build a student map for every class the teacher actually teaches, plus a
-  // combined entry under the selected base-group id (so assigning from M.4/3
-  // expands to M.4/3.1 + M.4/3.2).
   const studentsByClass: Record<
     string,
     { id: string; name: string; title: string | null; rollNumber: number | null }[]
   > = {};
+
+  // Build options for the class dropdown: base groups + their dotted sub-rooms.
+  // This lets the teacher assign to the whole group (default) or to a specific sub-room.
+  const classOptionsMap = new Map<string, { id: string; className: string }>();
+  for (const baseName of teacherClassNames) {
+    const ids = expandClassGroupIds(baseName, allClasses, { includeBase: true });
+    for (const id of ids) {
+      const cls = allClasses.find((c) => c.id === id);
+      if (cls && !classOptionsMap.has(id)) classOptionsMap.set(id, cls);
+    }
+  }
+  const classOptions = Array.from(classOptionsMap.values()).sort((a, b) =>
+    a.className.localeCompare(b.className),
+  );
+
+  // Load students for every class option (base groups won't have students, sub-rooms will).
   await Promise.all(
-    teacherClassesList.map(async (c) => {
+    classOptions.map(async (c) => {
       studentsByClass[c.id] = await studentsInClass(c.id);
     }),
   );
-  if (groupClassIds.length > 1) {
-    const combined = (
-      await Promise.all(
-        groupClassIds.map((id) =>
-          studentsInClass(id).then((list) =>
-            list.map((s) => ({
-              ...s,
-              label: allClasses.find((c) => c.id === id)?.className ?? "",
-            })),
-          ),
-        ),
+
+  // For the base-group default selection, show a combined student list from all sub-rooms.
+  if (groupClassIds.length > 0) {
+    const combined = groupClassIds
+      .flatMap((id) =>
+        (studentsByClass[id] ?? []).map((s) => ({
+          ...s,
+          label: allClasses.find((c) => c.id === id)?.className ?? "",
+        })),
       )
-    ).flat();
+      .sort((a, b) => {
+        if (a.label !== b.label) return a.label.localeCompare(b.label);
+        return (a.rollNumber ?? Infinity) - (b.rollNumber ?? Infinity);
+      });
     studentsByClass[selectedClass.id] = combined;
   }
-
-  const classOptions = teacherClassNames
-    .map((name) => ({
-      id: allClasses.find((c) => c.className === name)?.id ?? "",
-      className: name,
-    }))
-    .filter((c) => c.id);
 
   return (
     <div className="space-y-4">

@@ -52,15 +52,56 @@ export async function createNotification(input: CreateNotificationInput) {
   return n;
 }
 
-/** Fan-out the same notification to many users (e.g. a whole class). */
+/** Fan-out the same notification to many users (e.g. a whole class/school).
+ *
+ *  SQLite serializes writes, so firing N individual `create()` calls in parallel
+ *  (the old `Promise.all` approach) exhausts the connection pool on large
+ *  fan-outs and times out (P1008 "Socket timeout"). Instead we do a SINGLE bulk
+ *  insert, then publish realtime + schedule push from the returned rows. */
 export async function notifyUsers(
   userIds: string[],
   payload: Omit<CreateNotificationInput, "userId">,
 ) {
   const unique = [...new Set(userIds)];
-  await Promise.all(
-    unique.map((userId) => createNotification({ userId, ...payload })),
-  );
+  if (unique.length === 0) return;
+
+  const linkUrl = payload.linkUrl ?? null;
+  const created = await db.notification.createManyAndReturn({
+    data: unique.map((userId) => ({
+      userId,
+      type: payload.type,
+      title: payload.title,
+      message: payload.message,
+      linkUrl,
+    })),
+  });
+
+  // In-page realtime (SSE) — in-memory, cheap.
+  for (const n of created) {
+    publishToUser(n.userId, {
+      type: "notification",
+      payload: {
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        linkUrl: n.linkUrl,
+        createdAt: n.createdAt.toISOString(),
+      },
+    });
+  }
+
+  // OS-level push after the response — sequential to avoid a thundering herd.
+  after(async () => {
+    for (const userId of unique) {
+      await sendPushToUser(userId, {
+        title: payload.title,
+        message: payload.message,
+        url: linkUrl ?? "/dashboard",
+        tag: payload.type,
+      });
+    }
+  });
 }
 
 export async function getNotifications(

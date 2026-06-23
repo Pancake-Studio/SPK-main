@@ -95,13 +95,18 @@ export function applyDelegations(
     if (!slot) continue;
 
     if (viewerTeacherId === undefined) {
-      // Class timetable: surface the covering teacher.
-      slot.teacherName = o.toTeacherName;
-      marks[slot.id] = {
-        tone: "delegate",
-        label: "ฝากคาบ",
-        tooltip: `ครู ${o.fromTeacherName} ฝากให้ ครู ${o.toTeacherName} คุมแทนสัปดาห์นี้`,
-      };
+      // Class timetable: surface the covering teacher — unless this subject hides
+      // teacher names from students, in which case keep the cover anonymous.
+      if (slot.hideTeacher) {
+        marks[slot.id] = { tone: "delegate", label: "ฝากคาบ", tooltip: "มีครูคุมแทนสัปดาห์นี้" };
+      } else {
+        slot.teacherName = o.toTeacherName;
+        marks[slot.id] = {
+          tone: "delegate",
+          label: "ฝากคาบ",
+          tooltip: `ครู ${o.fromTeacherName} ฝากให้ ครู ${o.toTeacherName} คุมแทนสัปดาห์นี้`,
+        };
+      }
     } else if (o.fromTeacherId === viewerTeacherId) {
       marks[slot.id] = {
         tone: "delegate",

@@ -15,18 +15,52 @@ function parseDue(dueAt?: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function baseGroupName(className: string) {
+  return className.replace(/\.\d+$/, "");
+}
+
 /** Classes this teacher teaches (distinct, from their schedule). Falls back to
- *  all classes if the teacher has no schedule yet. */
+ *  all classes if the teacher has no schedule yet.
+ *
+ *  Dotted sub-rooms (e.g. ม.5/3.1) are collapsed back to their base group
+ *  (ม.5/3) because the base group is the unit used for assignments. */
 export async function teacherClasses(teacherId: string) {
+  const allClasses = await db.class.findMany({
+    select: { id: true, className: true },
+    orderBy: { className: "asc" },
+  });
+  const byName = new Map(allClasses.map((c) => [c.className.toUpperCase(), c]))
+  const byId = new Map(allClasses.map((c) => [c.id, c]));
+
   const rows = await db.schedule.findMany({
     where: { teacherId },
-    select: { class: { select: { id: true, className: true } } },
+    select: { classId: true },
     distinct: ["classId"],
-    orderBy: { class: { className: "asc" } },
   });
-  const classes = rows.map((r) => r.class);
-  if (classes.length > 0) return classes;
-  return db.class.findMany({ select: { id: true, className: true }, orderBy: { className: "asc" } });
+
+  const seen = new Map<string, { id: string; className: string }>();
+  for (const { classId } of rows) {
+    const cls = byId.get(classId);
+    if (!cls) continue;
+    const baseName = baseGroupName(cls.className);
+    const base = byName.get(baseName.toUpperCase());
+    const key = (base ?? cls).className.toUpperCase();
+    seen.set(key, base ?? cls);
+  }
+
+  if (seen.size > 0) {
+    return Array.from(seen.values()).sort((a, b) => a.className.localeCompare(b.className));
+  }
+
+  // Fallback: collapse all classes the same way.
+  const fallback = new Map<string, { id: string; className: string }>();
+  for (const cls of allClasses) {
+    const baseName = baseGroupName(cls.className);
+    const base = byName.get(baseName.toUpperCase());
+    const key = (base ?? cls).className.toUpperCase();
+    if (!fallback.has(key)) fallback.set(key, base ?? cls);
+  }
+  return Array.from(fallback.values()).sort((a, b) => a.className.localeCompare(b.className));
 }
 
 /** Students in a class (for the recipient picker), ordered by เลขที่. */
@@ -97,7 +131,8 @@ export async function createAssignment(teacherId: string, uploaderId: string, in
   if (!baseClass) throw new Error("ห้องเรียนไม่ถูกต้อง");
 
   const allClasses = await db.class.findMany({ select: { id: true, className: true } });
-  const classIds = expandClassGroupIds(baseClass.className, allClasses);
+  // Assign to the dotted sub-rooms only. The base group class has no students.
+  const classIds = expandClassGroupIds(baseClass.className, allClasses, { includeBase: false });
   if (classIds.length === 0) throw new Error("ห้องเรียนไม่ถูกต้อง");
 
   const wantIds = input.studentIds && input.studentIds.length > 0 ? new Set(input.studentIds) : null;
@@ -196,7 +231,8 @@ export async function listTeacherAssignmentsByClassName(
   className: string,
 ): Promise<TeacherAssignmentView[]> {
   const allClasses = await db.class.findMany({ select: { id: true, className: true } });
-  const classIds = expandClassGroupIds(className, allClasses);
+  // The base group class has no students; show assignments from its sub-rooms.
+  const classIds = expandClassGroupIds(className, allClasses, { includeBase: false });
 
   const rows = await db.assignment.findMany({
     where: { teacherId, classId: { in: classIds } },

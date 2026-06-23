@@ -179,7 +179,15 @@ export function TimetableGrid({
                       key={bell.id}
                       className={cn(cellBorder, "h-[76px] min-w-[120px] p-1 align-top", isCurrent && "bg-tt-current/30")}
                     >
-                      {slot ? (
+                      {slot && slot.activity ? (
+                        <div
+                          className="flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-md border border-dashed bg-secondary/40 px-2 py-1 text-center"
+                          style={{ borderColor: slot.colorHex ?? "var(--color-primary)" }}
+                        >
+                          <span className="text-[12px] font-semibold text-foreground">{slot.subjectName}</span>
+                          <span className="text-[9px] font-medium text-muted-foreground">กิจกรรม · ทุกห้อง</span>
+                        </div>
+                      ) : slot ? (
                         <button
                           type="button"
                           disabled={!clickable}
@@ -206,9 +214,13 @@ export function TimetableGrid({
                               {slot.subjectName}
                             </span>
                           </span>
-                          <span className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            {variant === "teacher" ? slot.className : slot.teacherName}
-                          </span>
+                          {(() => {
+                            // Class view hides the teacher for multi-teacher subjects.
+                            const sub = variant === "teacher" ? slot.className : slot.hideTeacher ? null : slot.teacherName;
+                            return sub ? (
+                              <span className="mt-0.5 truncate text-[11px] text-muted-foreground">{sub}</span>
+                            ) : null;
+                          })()}
                           {slot.room && (
                             <span className="mt-auto truncate text-[10px] text-muted-foreground">{slot.room}</span>
                           )}

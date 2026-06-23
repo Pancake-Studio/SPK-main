@@ -32,10 +32,25 @@ export type StudentRow = {
   classId: string;
 };
 
+function duplicateRollKeys(students: StudentRow[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const s of students) {
+    if (s.rollNumber == null) continue;
+    const key = `${s.classId}|${s.rollNumber}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const dupes = new Set<string>();
+  for (const [key, count] of counts) {
+    if (count > 1) dupes.add(key);
+  }
+  return dupes;
+}
+
 export function StudentTable({ students, classes }: { students: StudentRow[]; classes: { value: string; label: string }[] }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const duplicateKeys = React.useMemo(() => duplicateRollKeys(students), [students]);
 
   const allSelected = students.length > 0 && selected.size === students.length;
   const someSelected = selected.size > 0 && !allSelected;
@@ -115,7 +130,13 @@ export function StudentTable({ students, classes }: { students: StudentRow[]; cl
                     aria-label={`เลือก ${student.name}`}
                   />
                 </TableCell>
-                <TableCell className="text-center font-semibold text-foreground">
+                <TableCell
+                  className={`text-center font-semibold ${
+                    student.rollNumber != null && duplicateKeys.has(`${student.classId}|${student.rollNumber}`)
+                      ? "text-destructive"
+                      : "text-foreground"
+                  }`}
+                >
                   {student.rollNumber ?? <span className="text-muted-foreground">–</span>}
                 </TableCell>
                 <TableCell className="font-mono text-xs">{student.studentCode}</TableCell>

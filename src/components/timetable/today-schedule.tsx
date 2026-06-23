@@ -29,7 +29,14 @@ export function TodaySchedule({
     );
   }
 
-  const list = slotsForDay(slots, day);
+  // In the class (student) view a period shows one lesson — collapse the several
+  // rows a multi-teacher subject produces into a single entry. The teacher view
+  // keeps every row (a teacher may run several rooms in the same period).
+  const dayList = slotsForDay(slots, day);
+  const list =
+    variant === "class"
+      ? dayList.filter((s, i, arr) => arr.findIndex((x) => x.period === s.period) === i)
+      : dayList;
   if (list.length === 0) {
     return (
       <EmptyState
@@ -65,10 +72,18 @@ export function TodaySchedule({
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium text-foreground">{s.subjectName}</p>
-              <p className="truncate text-sm text-muted-foreground">
-                {variant === "teacher" ? s.className : s.teacherName}
-                {s.room ? ` · ${s.room}` : ""}
-              </p>
+              {(() => {
+                // Class view hides the teacher for multi-teacher subjects / activities.
+                const secondary = s.activity
+                  ? "กิจกรรม · ทุกห้อง"
+                  : variant === "teacher"
+                    ? s.className
+                    : s.hideTeacher
+                      ? null
+                      : s.teacherName;
+                const text = [secondary, !s.activity && s.room ? s.room : null].filter(Boolean).join(" · ");
+                return text ? <p className="truncate text-sm text-muted-foreground">{text}</p> : null;
+              })()}
             </div>
             {isNow && (
               <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">

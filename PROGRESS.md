@@ -2,7 +2,7 @@
 
 # SPK School Platform — บันทึกความคืบหน้า (Progress Log)
 
-> อัปเดตล่าสุด: 2026-06-21 · สถานะ: **Phase 1 เสร็จสมบูรณ์** — ผ่าน `tsc`, `next build`, และ smoke-test ทุกหน้า/ทุกบทบาท ✅
+> อัปเดตล่าสุด: 2026-06-23 · สถานะ: **Phase 1 เสร็จสมบูรณ์** — ผ่าน `tsc`, `next build`, และ smoke-test ทุกหน้า/ทุกบทบาท ✅
 
 แอปพลิเคชันบริหารจัดการโรงเรียน (School Management Web App) ตามสเปกใน
 [docs/PROMPT.md](docs/PROMPT.md) และ [docs/DESIGN.md](docs/DESIGN.md)
@@ -144,6 +144,115 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 ---
 
 ## 6. Session Log (บันทึกทุกครั้งที่ทำงาน)
+
+### 2026-06-23 — คาบกิจกรรมทับคาบเรียนในตาราง (activity มี priority สูงสุด)
+- **โจทย์**: คาบกิจกรรมสำคัญที่สุด — ถ้ามีคาบกิจกรรมในช่อง (day, period) ที่ห้อง/ครูมีคาบเรียนอยู่ ตารางเรียน/ตารางสอนต้องแสดงเป็นคาบกิจกรรมแทน; ลบคาบกิจกรรมออกแล้วคาบเรียนเดิมกลับมาแสดงอัตโนมัติ
+- **แก้ไข** ([activity.service.ts](src/server/services/activity.service.ts) `withActivities`): เปลี่ยนจาก overlay เติมช่องว่าง → **override ช่องที่ชน** โดยกรองคาบเรียนปกติที่ `(day, period)` ตรงกับกิจกรรมออก แล้วใส่ activity slot เข้าไปแทน · ลบกิจกรรม = ข้อมูลเดิมกลับมาเอง (read-time overlay, ไม่แตะ `Schedule`)
+- **ผลกระทบ**: ใช้กับ `getClassEffective` + `getTeacherEffective` → หน้าตารางเรียนนักเรียน (`/student/schedule`), แดชบอร์ดนักเรียน, ตารางสอนครู (`/teacher/schedule`) จะแสดงกิจกรรมแทนคาบเรียนทันที
+- **หมายเหตุ**: หน้าจัดตารางสอน (`/admin/schedule`, `/teacher/schedule/manage`) ยังแสดงคาบเรียนจริง + marker กิจกรรม เพื่อให้แอดมิน/ครูลบหรือย้ายคาบที่ทับได้
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ✅ (38 routes) · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — อนุญาตเลขที่ซ้ำในห้อง + ไฮไลต์สีแดง + แก้ไขรหัสนักเรียนได้
+- **โจทย์**: เลขที่นักเรียนซ้ำกันในห้องได้ โดยถ้าซ้ำให้ทั้งสองแถวแสดงเป็นสีแดงแทนการบล็อก; ฟอร์มแก้ไขนักเรียนต้องแก้ไขรหัสนักเรียนได้
+- **Schema** ([prisma/schema.prisma](prisma/schema.prisma)): เปลี่ยน `@@unique([classId, rollNumber])` → `@@index([classId, rollNumber])` ยกเลิก unique ระดับ DB · `db push` ผ่าน ไม่ทำลายข้อมูล
+- **Server**: ลบ `assertRollFree()` และการเรียกใช้ใน `createStudent`/`updateStudent` ([admin.service.ts](src/server/services/admin.service.ts)) และ `createAdvisoryStudent`/`updateAdvisoryStudent` ([teacher-self.service.ts](src/server/services/teacher-self.service.ts)) · ลบข้อความผิดพลาด "เลขที่ซ้ำ" ออกจาก `studentDupMessage` ([admin.actions.ts](src/server/actions/admin.actions.ts))
+- **แก้ไขรหัสนักเรียน**: ฟอร์มแก้ไขนักเรียนฝั่งแอดมิน ([edit-student-dialog.tsx](src/components/admin/edit-student-dialog.tsx)) และฝั่งครูที่ปรึกษา ([advisory-student-dialogs.tsx](src/components/teacher/advisory-student-dialogs.tsx)) เปลี่ยน `ReadOnlyField` เป็น `FormField` สำหรับ `studentCode` · server รองรับการอัปเดตรหัสนักเรียนอยู่แล้ว (studentCode ยังเป็น `@unique`)
+- **ไฮไลต์เลขที่ซ้ำ**: ตารางนักเรียนแอดมิน ([student-table.tsx](src/components/admin/student-table.tsx)) และตารางนักเรียนที่ปรึกษา ([advisory-student-table.tsx](src/components/teacher/advisory-student-table.tsx)) คำนวณชุด `classId|rollNumber` ที่ซ้ำภายในรายการที่แสดง แล้วใช้ `text-destructive` กับเซลล์เลขที่ของนักเรียนที่ซ้ำทั้งสองราย
+- **UI ลิเบล**: เปลี่ยน label ช่องเลขที่จาก "เลขที่ (ห้ามซ้ำในห้อง)" เป็น "เลขที่" ในทุกฟอร์มที่เกี่ยวข้อง
+- **ตรวจสอบ**: `npx prisma db push` ✅ · `npx tsc --noEmit` ✅ · `npm run build` ✅ (38 routes) · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — ครูที่ปรึกษาผูกกับชั้นแม่ (4/3,5/3,6/3) ดูแลห้องย่อยอัตโนมัติ
+- **โจทย์**: เลือกครูที่ปรึกษาเป็นชั้นแม่ ม.4/3/5/3/6/3 (ไม่ต้องแยก .1/.2) แล้วครอบคลุมห้องย่อยทั้งหมด รวมห้องที่สร้างใหม่ภายหลัง (เช่น 6/3.4) อัตโนมัติตามชื่อ
+- **admin dropdown** ([teachers/page.tsx](src/app/(app)/admin/teachers/page.tsx)): แสดง base-group (parents + ห้องปกติ) ตัดห้องย่อย `.N` ออก · นับนักเรียนรวมห้องย่อย (ม.5/3 · 36 คน)
+- **service** ([teacher-self.service.ts](src/server/services/teacher-self.service.ts)): `advisorRooms()` = ชั้น + ห้องย่อย (startsWith `name.`) · `getAdvisorContext()` · `listAdvisoryStudents` ดึงนักเรียนจากทุกห้องย่อย · create/update/delete ใช้ `assertRoomInAdvisory` (classId ต้องอยู่ในห้องที่ดูแล) · create/update รับ classId จากฟอร์ม (ย้ายนักเรียนระหว่างห้องย่อยได้)
+- **UI**: dialog เพิ่ม/แก้นักเรียนมี dropdown เลือกห้องย่อย (โชว์เมื่อมี >1 ห้อง, ไม่งั้น hidden) ([advisory-student-dialogs.tsx](src/components/teacher/advisory-student-dialogs.tsx)) · ตารางเพิ่มคอลัมน์ "ห้อง" เมื่อมีหลายห้องย่อย ([advisory-student-table.tsx](src/components/teacher/advisory-student-table.tsx)) · หน้า advisory ใช้ getAdvisorContext
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · read-only: ม.5/3 → ดูแล 5/3+.1+.2 = 36 คน, ม.1/1 → 29 คน · ไม่แตะข้อมูล
+
+### 2026-06-23 — แก้บั๊กครูที่ปรึกษาเลือกห้องไม่ได้ + รายการคาบวันนี้โชว์ครูซ้ำ
+- **บั๊กครูที่ปรึกษา (เลือกห้องไม่ได้)**: ดรอปดาวน์ว่างเปล่า เพราะ filter `!className.includes(".")` แต่ชื่อห้องไทยขึ้นต้น "ม." (มีจุด) → กรองออกหมดทุกห้อง · แก้เป็นกรอง "ชั้นแม่ว่าง" (ห้องที่มีห้องย่อย) ออกแทน → เลือกห้องย่อย/ห้องปกติที่มีนักเรียนได้ + โชว์จำนวนนักเรียน ([teachers/page.tsx](src/app/(app)/admin/teachers/page.tsx))
+- **บั๊กเดียวกันใน `expandClassGroupIds`** (กระทบ**การสั่งงาน**!): `normalized.includes(".")` → "ม.5/3" ถูกมองเป็นห้องย่อย → สั่งงานให้ ม.5/3 ไป **0 คน** (ไม่กระจาย .1/.2) · แก้เป็น `/\.\d+$/.test()` · ยืนยัน read-only: ม.5/3 → .1(23)+.2(13) ✅ ([admin.service.ts](src/server/services/admin.service.ts))
+- **รายการคาบวันนี้โชว์ครูซ้ำ** (วิชาสอนหลายคน): [today-schedule.tsx](src/components/timetable/today-schedule.tsx) ใช้ `slotsForDay` ไม่ยุบซ้ำ + ไม่ซ่อนครู → มุมมองนักเรียนยุบเหลือคาบเดียว/คาบ + ซ่อนครูเมื่อ hideTeacher (มุมมองครูคงไว้ทุกห้อง) · [now-next.tsx](src/components/timetable/now-next.tsx) ก็ซ่อนครูตาม hideTeacher/activity เช่นกัน
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · ไม่แตะข้อมูล
+
+### 2026-06-23 — คาบกิจกรรมส่วนกลาง (ชุมนุม/อบรม) + แก้บั๊กเลื่อนเมาส์ใน combobox
+- **บั๊ก combobox เลื่อนไม่ได้**: Popover ถูก portal ออกนอก Dialog → `react-remove-scroll` ของ Dialog บล็อก wheel → เพิ่ม prop `portalled` ใน [popover.tsx](src/components/ui/popover.tsx), [combobox.tsx](src/components/ui/combobox.tsx) ส่ง `portalled={false}` (เรนเดอร์ในตัว Dialog เลื่อนได้)
+- **ฟีเจอร์ใหม่ คาบกิจกรรมระดับโรงเรียน**: เหมือนกันทุกห้อง/ทุกครู ไม่มีครู/วิชาแยกต่อห้อง
+  - schema: model `ActivityPeriod (day, period, label, colorHex)` `@@unique([day,period])` · db push (ตารางใหม่ ไม่กระทบข้อมูล)
+  - service [activity.service.ts](src/server/services/activity.service.ts): CRUD + `withActivities()` (overlay เข้าทุกตารางที่ช่องว่าง) + `activitySlotMap()` + `activityAt()`
+  - `TimetableSlot.activity?` ([timetable.ts](src/lib/timetable.ts)) · inject ใน `getClassEffective`+`getTeacherEffective` ([effective-schedule.service.ts](src/server/services/effective-schedule.service.ts)) → นักเรียน+ครูเห็น
+  - render ป้ายกิจกรรม (ไม่มีครู/ห้อง) ใน [timetable-grid.tsx](src/components/timetable/timetable-grid.tsx), [timetable-mobile.tsx](src/components/timetable/timetable-mobile.tsx), และ [schedule-editor.tsx](src/components/schedule/schedule-editor.tsx) (read-only กดเพิ่มไม่ได้)
+  - กันจัดคาบเรียนทับ: `assertNotActivitySlot` ใน saveScheduleSlot (admin) + createOwn/updateOwnSchedule (teacher)
+  - admin UI: หน้า [/admin/activities](src/app/(app)/admin/activities/page.tsx) + [activity-manager.tsx](src/components/admin/activity-manager.tsx) + [activity.actions.ts](src/server/actions/activity.actions.ts) + nav "คาบกิจกรรม" (icon Sparkles)
+  - **seed**: สร้าง คาบอบรมคุณธรรม (ศุกร์ คาบ 7), คาบชุมนุม (พฤหัส คาบ 7) ตามที่ผู้ใช้ระบุ
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · THU#7/FRI#7 ว่างอยู่แล้วไม่ชนข้อมูลเดิม · ต้อง restart dev server
+
+### 2026-06-23 — วิชาสอนหลายคน: ครูคนเดียวสอนหลายห้องพร้อมกันได้
+- **โจทย์**: วิชาสอนหลายคน ครูคนเดียวจัดสอนคาบเดียวกันได้หลายห้องพร้อมกัน (ผ่อนเงื่อนไข "ครูสอนซ้อน" เฉพาะวิชา multi) — ไม่ต้องแก้ DB (unique มี classId+teacherId คนละห้อง=คนละ key)
+- **server**: `assertTeacherSlotFree`/`assertTeacherFree` รับ subjectId → อนุญาต stack ถ้าคาบที่ชนเป็นวิชา multi เดียวกัน ([admin.service.ts](src/server/services/admin.service.ts), [teacher-self.service.ts](src/server/services/teacher-self.service.ts))
+- **editor** ([schedule-editor.tsx](src/components/schedule/schedule-editor.tsx)): กริดเก็บหลายคาบต่อช่อง (array) → ช่องที่มีวิชา multi แสดงทุกห้อง + ปุ่ม "+ เพิ่มห้อง" (preset วิชาเป็น multi นั้น) · ห้องที่ครูสอนคาบนั้นแล้วจะ disable ("สอนห้องนี้แล้ว") กันเลือกซ้ำ · `EditorSlot.multi` มาจาก `subject.hideTeacherForStudents`
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · ไม่แตะข้อมูล · ต้อง restart dev server
+
+### 2026-06-23 — วิชาสอนหลายคน: ครูหลายคนลงคาบเดียวกันได้ (เฉพาะวิชานั้น)
+- **โจทย์**: วิชาที่ติ๊ก "ครูสอนหลายคน" (hideTeacherForStudents) ครูหลายคนบันทึกลงคาบเดียวกันของห้องเดียวกันได้ แต่ได้เฉพาะวิชานั้น (เช่น IS ม.2 ทั้งคู่) — วิชาปกติยังห้ามชน
+- **Schema**: เปลี่ยน `@@unique([classId,day,period])` → `@@unique([classId,day,period,teacherId])` (อนุญาตหลายครูในคาบเดียว) + `@@index([classId,day,period])` · db push (สำรอง dev.db ก่อน, ตรวจแล้ว 0 แถวหาย — preuniq backup=live=482)
+- **เงื่อนไข (server)**: `assertClassSlotFree` รับ subjectId เพิ่ม → อนุญาต stack ถ้าทุกคาบที่มีอยู่เป็น "วิชาเดียวกันและเป็นวิชาสอนหลายคน" มิฉะนั้นบล็อก ([admin.service.ts](src/server/services/admin.service.ts), [teacher-self.service.ts](src/server/services/teacher-self.service.ts)) · ครูยังสอนซ้อนเองไม่ได้
+- **occupancy**: `classOccupancyMap()` คืน `{subjectId, multi}` ต่อ `classId|day|period` (เดิมคืนแค่ classId list)
+- **UI** ([schedule-editor.tsx](src/components/schedule/schedule-editor.tsx)): ห้องที่ติดวิชา multi ในคาบนั้น **เลือกได้** (hint "วิชาสอนหลายคน") แต่ช่องวิชาจะ **ล็อกเป็นวิชาเดียวกัน** + ข้อความเตือน · ห้องที่ติดวิชาปกติยัง disable ("มีคาบแล้ว")
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · ยืนยัน IS ม.2/IS ม.5 ติ๊ก multi → occupancy multi=true (read-only) · ไม่แตะข้อมูล (push เท่านั้น) · ต้อง restart dev server
+
+### 2026-06-23 — รื้อหน้าจัดตารางสอนใหม่เป็นแบบ grid รายครู (คลิกเพิ่ม/แก้/ลบ)
+- **ฟอร์มใหม่**: เลือกครู (ค้นหาได้) → เห็นตารางสอนของครูคนนั้นเป็น grid → คลิกคาบว่าง = เพิ่ม / คลิกคาบที่มี = แก้ไข/ลบ ใช้ทั้งฝั่งแอดมิน (เลือกครูคนไหนก็ได้) และฝั่งครู (ของตัวเอง)
+- **เงื่อนไขห้ามชนคาบในห้อง**: เพิ่ม `assertClassSlotFree` + `assertTeacherSlotFree` → ห้องที่มีคาบเรียนแล้วในวัน+คาบนั้นจะเลือกไม่ได้ในกล่อง (disable) และ server บล็อกพร้อมข้อความชัดเจน ([admin.service.ts](src/server/services/admin.service.ts) `saveScheduleSlot`, [teacher-self.service.ts](src/server/services/teacher-self.service.ts)) · กันครูสอนซ้อนด้วย
+- **ใหม่**: [ui/combobox.tsx](src/components/ui/combobox.tsx) (select ค้นหาได้), [schedule/schedule-editor.tsx](src/components/schedule/schedule-editor.tsx) (grid + dialog เพิ่ม/แก้/ลบ), [schedule/teacher-picker.tsx](src/components/schedule/teacher-picker.tsx) (เลือกครูผ่าน `?teacher=`) · actions: `saveScheduleSlotAction` (admin), `saveOwnScheduleSlotAction` (self) คืน `{ok,error}` · service: `listTeacherSlots`, `classOccupancyMap`
+- **เขียนหน้าใหม่**: [admin/schedule/page.tsx](src/app/(app)/admin/schedule/page.tsx) (searchParam teacher), [teacher/schedule/manage/page.tsx](src/app/(app)/teacher/schedule/manage/page.tsx)
+- **ลบ dead code**: schedules-table, edit-schedule-dialog, add-schedule-dialog, own-schedule-table, own-schedule-dialogs (5 ไฟล์) + actions เก่า createSchedule/updateSchedule/createOwnSchedule/updateOwnScheduleAction + import ที่ไม่ใช้
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · ไม่แตะข้อมูลจริง · ต้อง restart dev server
+
+### 2026-06-23 — กู้คืนตารางที่ถูกลบ 309 คาบ (forensic recovery จาก freelist)
+- **สถานการณ์**: ตารางห้องปกติ (1/1–6/2) หายหมดจาก delete-missing import เหลือแต่ห้อง 3 · git กู้ไม่ได้ (dev.db gitignore) · backup ทุกไฟล์ = 177 คาบแล้ว
+- **วิธี**: เขียน scanner อ่าน raw bytes ของไฟล์ SQLite หา record Schedule ที่ถูกลบแต่ยังค้างใน freelist/freeblock pages (signature `3F 3F 3F 3F 13` = text(25)×4 + day text(3)) แล้ว map cuid → class/subject/teacher ที่ยังอยู่ ([scripts/recover-schedules.cjs](scripts/recover-schedules.cjs), [scripts/recover-apply.cjs](scripts/recover-apply.cjs))
+- **ผลกู้**: เจอ 354 คาบที่ถูกลบ · ข้ามชั้นแม่ 4/3,5/3,6/3 (45 คาบ — คาบรวมอยู่ในห้องย่อยแล้ว จะซ้ำ/ครูสอนซ้อน) · กู้จริง **309 คาบ** ของห้องปกติ · **ครูชนเวลา 0** (ยืนยันข้อมูลถูกต้อง สมเหตุสมผล)
+- **ปลอดภัย**: dry-run + ดูตัวอย่าง 5/1,1/1 ก่อน · สำรอง dev.db ใหม่ (`dev.db.bak-2026-06-23T10-53-59-...`) ก่อนเขียน · insert ข้าม key ที่มีอยู่
+- **ผลลัพธ์**: ทุกห้องที่มีนักเรียนมีตารางครบ (รวม 486 คาบ) · ไม่มีห้องที่มีนักเรียนแต่ตารางว่าง ✅
+- ⚠️ **ราก** = `syncSchedules` delete-missing (import ไฟล์บางส่วน → ลบที่เหลือ) ดู memory [[spk-syncschedules-delete-missing]] · ยังไม่ได้ใส่กันชน (ผู้ใช้ขอโฟกัสกู้ข้อมูลก่อน)
+
+### 2026-06-23 — คาบรวมชั้นแม่ (IS) แสดงในห้องย่อย + วินิจฉัยตารางห้องอื่นหาย
+- **IS ใน 5/3 ไม่ขึ้นใน 5/3.1/.2**: เพราะนักเรียนอ่านตารางของห้องตัวเอง (subclass) ส่วน IS อยู่ในชั้นแม่ ม.5/3 ที่ไม่ถูก merge → **แก้**: เพิ่ม `getClassScheduleWithUmbrella()` ใน [effective-schedule.service.ts](src/server/services/effective-schedule.service.ts) ให้ห้องย่อยดึง "คาบรวม" ของชั้นแม่ (ชื่อห้องตัด `.\d+$`) มาเติมเฉพาะช่อง (วัน,คาบ) ที่ว่าง (คาบของห้องย่อยชนะถ้าซ้ำ) · ใช้ทั้งหน้าตารางและ dashboard นักเรียน · verify: IS (FRI#3,#4) โผล่ใน 5/3.1+5/3.2 ไม่ชนเวลา
+- **ตารางห้องอื่นหาย (ยกเว้นห้อง 3)**: ตรวจแล้ว **ไม่ได้เกิดจากงานเซสชันนี้** — backup ก่อนย้ายนักเรียน (10:04) มี 177 คาบ = เฉพาะห้อง 3 อยู่แล้ว (+ ม.2/1=2 ที่ตอนนี้ผู้ใช้ย้าย/แก้เป็น IS ใน 5/3) · ประวัติ: เคย 484 → 458 → 177 คาบข้ามเซสชัน
+- **สาเหตุที่หาย** = `syncSchedules` ([admin.service.ts](src/server/services/admin.service.ts)) เป็น **delete-missing sync**: ตอนท้ายลบทุกคาบที่ไม่มีในไฟล์ที่อัปโหลด → ถ้า re-import `schedules.xlsx` ที่มีแค่ห้อง 3 (หรือบางส่วน) จะลบตารางห้องที่เหลือทิ้งทั้งหมด · **กู้จาก backup ไม่ได้** (ทุก backup ที่มี = 177 แล้ว) ต้อง re-import schedules.xlsx ฉบับเต็มเอง
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · DB read-only เทียบกับ backup · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — ตั้งค่า "วิชาสอนหลายคน → ซ่อนชื่อครูจากนักเรียน"
+- **ฟีเจอร์**: เพิ่ม toggle ต่อวิชา ให้ซ่อนชื่อครูผู้สอนในตารางเรียน**ฝั่งนักเรียน** (variant "class") สำหรับวิชาที่สอนหลายคน — มุมมองครู/แอดมินยังเห็นปกติ
+- **Schema**: `Subject.hideTeacherForStudents Boolean @default(false)` → `db push` non-destructive (เพิ่มคอลัมน์ค่า default false) + generate
+- **Backend**: subjectSchema เพิ่ม field (preprocess "on"/"true"/"1" → boolean), persist ใน createSubject/updateSubject ([admin.service.ts](src/server/services/admin.service.ts)) + createOwnSubject/updateOwnSubject ([teacher-self.service.ts](src/server/services/teacher-self.service.ts)); `syncSubjects` คงค่าเดิมไว้ (Excel ไม่มีคอลัมน์นี้ จะได้ไม่ถูกล้างเป็น false ตอน re-import)
+- **Slot flow**: `TimetableSlot.hideTeacher?` ([timetable.ts](src/lib/timetable.ts)) ← `toSlot` ([schedule.service.ts](src/server/services/schedule.service.ts)) → grid+mobile ซ่อนบรรทัดชื่อครูเมื่อ class view + hideTeacher ([timetable-grid.tsx](src/components/timetable/timetable-grid.tsx), [timetable-mobile.tsx](src/components/timetable/timetable-mobile.tsx))
+- **กันชื่อหลุดผ่าน mark**: มุมมองนักเรียนถ้าวิชาซ่อนครู mark "ฝากคาบ" จะไม่ใส่ชื่อครูใน tooltip (ใช้ "มีครูคุมแทนสัปดาห์นี้") ([weekly-overlay.ts](src/lib/weekly-overlay.ts)) · mark "สลับคาบ" ไม่มีชื่อครูอยู่แล้ว
+- **UI ตั้งค่า**: checkbox ใหม่ ([checkbox-field.tsx](src/components/admin/checkbox-field.tsx)) ในฟอร์มเพิ่ม/แก้วิชา ทั้งแอดมิน ([add-subject-dialog.tsx](src/components/admin/dialogs/add-subject-dialog.tsx), [edit-subject-dialog.tsx](src/components/admin/edit-subject-dialog.tsx)) และครู ([own-subject-dialogs.tsx](src/components/teacher/own-subject-dialogs.tsx)) + badge "ซ่อนชื่อครู" ในตารางวิชาทั้งสองฝั่ง
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ (Compiled successfully) · ไม่แตะข้อมูลจริง · ต้อง restart dev server (Prisma client มี field ใหม่)
+
+### 2026-06-23 — ย้ายนักเรียน 4/3, 6/3 เข้าห้องย่อย .1/.2 (แก้ตาราง/งานไม่ sync) — เสร็จ
+- **ทำ**: ผู้ใช้ส่ง split รายชื่อ .1/.2 มา → เขียนสคริปต์ย้าย `classId` ของนักเรียนจากชั้นแม่เข้าห้องย่อยตามแผนการเรียน (ไม่ต้องแก้โค้ดแอป — ระบบรองรับโมเดลร่มอยู่แล้ว)
+- **ขั้นตอนปลอดภัย**: (1) dry-run จับคู่ชื่อ→รหัสด้วย fuzzy match (Levenshtein) ทนต่อสะกด/เว้นวรรค/คำนำหน้าต่างกัน แล้วให้ตรวจก่อน (2) สำรอง `prisma/dev.db` → `dev.db.bak-2026-06-23T10-04-59-...` (3) ย้ายใน `$transaction`
+- **ผล**: ย้าย 40 คน — ม.4/3 (22) → .1=7, .2=15 · ม.6/3 (18) → .1=8, .2=10 · ม.5/3 อยู่ถูกแล้วไม่แตะ · ชั้นแม่ทั้งสามเหลือ 0 คน (ร่ม) · ทุกห้องย่อยมีทั้งนักเรียน+ตาราง → นักเรียนเห็นตาราง + รับงานที่สั่งชั้นแม่ได้แล้ว
+- **หมายเหตุ**: 2 ชื่อในลิสต์ที่ผู้ใช้ส่งไม่อยู่ในห้องนั้นจริง (ข้ามไป ไม่ย้ายผิด): `ศุจินธรา พันคำ` (ลิสต์ 4/3.2), `ประพัทธ์ วรรณา` (ลิสต์ 6/3.1)
+- **ไฟล์**: [scripts/split-groups.cjs](scripts/split-groups.cjs) (ข้อมูล split ร่วม), [scripts/split-plan.cjs](scripts/split-plan.cjs) (dry-run), [scripts/split-apply.cjs](scripts/split-apply.cjs) (backup+ย้าย+verify)
+- **ตรวจสอบ**: verify จำนวน students/schedules ต่อห้องหลังย้าย ✅ · dev.db มี backup · ไม่ reseed/reset
+
+### 2026-06-23 — วินิจฉัย: 4/3, 6/3 "ไม่ sync" ตาราง/งาน (เป็นปัญหาข้อมูล ไม่ใช่โค้ด) — รอ split
+- **โจทย์**: ห้องย่อย 4/3.1/.2, 5/3.1/.2, 6/3.1/.2 ยังไม่ sync กับชั้นแม่ 4/3 5/3 6/3 (ตารางเรียน + การสั่งงานรวม 2 ห้อง)
+- **ผลตรวจ (read-only)**: ระบบรองรับโมเดล "ชั้นแม่ = ร่ม, นักเรียนอยู่ .1/.2" อยู่แล้ว — สั่งงานที่ชั้นแม่กระจายไป .1/.2 อัตโนมัติผ่าน `expandClassGroupIds` ([assignment.service.ts](src/server/services/assignment.service.ts), [admin.service.ts](src/server/services/admin.service.ts)) และนักเรียนห้องย่อยเห็นตารางของห้องตัวเอง · **5/3 ถูกต้องแล้ว** (parent 0 คน, .1=23 .2=13, ตารางอยู่ห้องย่อย)
+- **ต้นเหตุจริง = ข้อมูล**: 4/3 (22 คน) และ 6/3 (18 คน) ยังมีนักเรียนค้างใน **ชั้นแม่** (sched=0) ส่วนตารางอยู่ใน .1/.2 (ที่มี 0 นักเรียน) → นักเรียนเห็นตารางว่าง + ไม่ได้รับงาน · เกิดจากตอน import (`syncStudents`) คอลัมน์ `className` ใน Excel ระบุเป็น `ม.4/3`/`ม.6/3` (ไม่ใช่ .1/.2)
+- **การตัดสินใจของผู้ใช้**: เลือก "ส่ง split ให้ Claude เขียนสคริปต์ย้าย" → ผม dump รายชื่อ 4/3+6/3 (รหัส/เลขที่/ชื่อ) ให้ผู้ใช้ระบุ .1/.2 · **ยังไม่แตะข้อมูล** รอ list
+- **แผนสคริปต์ (เมื่อได้ split)**: backup dev.db → ตรวจ studentCode ครบ → อัปเดต classId เข้า .1/.2 → ตรวจ rollNumber ชน (unique [classId,rollNumber]) → สรุปผล · ไม่ reseed/reset
+- **ตรวจสอบ**: เทิร์นนี้ไม่แก้โค้ด/ข้อมูล (วินิจฉัยอย่างเดียว) · query เป็น read-only ทั้งหมด
+
+### 2026-06-23 — แก้ P1008 Socket timeout ตอนประกาศทั้งโรงเรียน (notifyUsers)
+- **อาการ**: `prisma.notification.create()` ล้มด้วย `P1008 Socket timeout` ตอน fan-out ประกาศ (admin.service → notifyUsers)
+- **สาเหตุ**: `notifyUsers` ยิง `db.notification.create()` แบบขนานพร้อมกันหลายร้อยครั้ง (`Promise.all`) แต่ SQLite เขียนทีละรายการ → connection pool เต็ม → timeout
+- **แก้**: เปลี่ยนเป็น **bulk insert ครั้งเดียว** ด้วย `createManyAndReturn` แล้วค่อยวน publish realtime (in-memory) + schedule push แบบ sequential ใน `after()` ([notification.service.ts](src/server/services/notification.service.ts)) — ตอนนี้ fan-out = 1 write ต่อ 1 ประกาศ
+- **ตรวจสอบ**: `tsc` ✅ (ยืนยัน `createManyAndReturn` รองรับ Prisma 6.19 + SQLite) · ไม่แตะข้อมูลจริง
+- หมายเหตุ: log `subscribePushAction called` ซ้ำๆ เป็นเรื่องปกติ (client re-subscribe ตอนโหลดหน้า) ไม่ใช่ error · `CredentialsSignin` = login ผิดปกติของ Auth.js ไม่ใช่บั๊ก
 
 ### 2026-06-23 — หน้าแจ้งเตือน: infinite scroll ทีละ 10 + กระดิ่ง navbar เลื่อนได้
 - **โหลดทีละ 10 (infinite scroll)**: หน้าประวัติแจ้งเตือนโหลดหน้าแรก 10 รายการฝั่ง server แล้วโหลดเพิ่มอัตโนมัติเมื่อเลื่อนถึงท้ายลิสต์ (IntersectionObserver, rootMargin 200px) มีปุ่ม "โหลดเพิ่ม" สำรอง + spinner "กำลังโหลด…"

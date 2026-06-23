@@ -12,7 +12,6 @@ import {
   subjectSchema,
   subjectUpdateSchema,
   scheduleSchema,
-  scheduleUpdateSchema,
   announcementSchema,
 } from "@/lib/validations";
 import {
@@ -32,10 +31,10 @@ import {
   updateSubject,
   deleteSubject,
   deleteSubjects,
-  createSchedule,
-  updateSchedule,
   deleteSchedule,
   deleteSchedules,
+  saveScheduleSlot,
+  ScheduleConflictError,
   bulkCreateSchedules,
   getImportLookups,
   exportTeachers,
@@ -66,14 +65,9 @@ function uniqueMessage(e: unknown, label: string): string | null {
   return null;
 }
 
-/** Obsolete: a class may now have multiple advisors. */
-/** Student-specific: surface the friendly "เลขที่ซ้ำ" message, plus the
- *  roll-number / email DB-unique backstops. */
+/** Student-specific: surface email/studentCode unique-constraint failures. */
 function studentDupMessage(e: unknown): string | null {
-  if (e instanceof Error && e.message.includes("เลขที่")) return e.message;
   if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
-    const target = String((e as { meta?: { target?: unknown } }).meta?.target ?? "");
-    if (target.includes("rollNumber")) return "เลขที่นี้ถูกใช้แล้วในห้องนี้";
     return "อีเมล/รหัสนักเรียน นี้ถูกใช้งานแล้ว";
   }
   return null;
@@ -281,47 +275,36 @@ export async function deleteSubjectsAction(ids: string[]) {
 
 /* -------------------------------- Schedules ----------------------------- */
 
-export async function createScheduleAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  await requireAdmin();
-  const parsed = scheduleSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
-  try {
-    await createSchedule(parsed.data);
-  } catch (e) {
-    return fail(
-      uniqueMessage(e, "คาบเรียนนี้ (ห้อง/วัน/คาบ)") ??
-        "ไม่สามารถเพิ่มคาบเรียนได้",
-    );
-  }
-  revalidatePath("/admin/schedule");
-  return ok("เพิ่มคาบเรียนเรียบร้อยแล้ว");
-}
-
-export async function updateScheduleAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  await requireAdmin();
-  const parsed = scheduleUpdateSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
-  try {
-    await updateSchedule(parsed.data);
-  } catch (e) {
-    return fail(
-      uniqueMessage(e, "คาบเรียนนี้ (ห้อง/วัน/คาบ)") ??
-        "ไม่สามารถแก้ไขคาบเรียนได้",
-    );
-  }
-  revalidatePath("/admin/schedule");
-  return ok("แก้ไขคาบเรียนเรียบร้อยแล้ว");
-}
-
 export async function deleteScheduleAction(id: string) {
   await requireAdmin();
   await deleteSchedule(id);
+  revalidatePath("/admin/schedule");
+  return { ok: true };
+}
+
+export type SlotInput = {
+  id?: string;
+  classId: string;
+  subjectId: string;
+  teacherId: string;
+  day: string;
+  period: number;
+  room?: string;
+};
+
+/** Grid-editor save (create or update one slot) with friendly conflict messages. */
+export async function saveScheduleSlotAction(
+  input: SlotInput,
+): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin();
+  const parsed = scheduleSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
+  try {
+    await saveScheduleSlot({ ...parsed.data, id: input.id });
+  } catch (e) {
+    if (e instanceof ScheduleConflictError) return { ok: false, error: e.message };
+    return { ok: false, error: uniqueMessage(e, "คาบเรียนนี้ (ห้อง/วัน/คาบ)") ?? "บันทึกไม่สำเร็จ" };
+  }
   revalidatePath("/admin/schedule");
   return { ok: true };
 }

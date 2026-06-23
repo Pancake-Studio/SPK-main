@@ -61,11 +61,23 @@ function SlotCard({
             />
             <p className="text-lg font-bold text-foreground">{slot.subjectName}</p>
           </div>
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <User className="size-3.5" />
-            {variant === "teacher" ? slot.className : slot.teacherName}
-          </p>
-          {slot.room && (
+          {(() => {
+            // Class view hides the teacher for multi-teacher subjects / activities.
+            const who = slot.activity
+              ? "ทุกห้อง"
+              : variant === "teacher"
+                ? slot.className
+                : slot.hideTeacher
+                  ? null
+                  : slot.teacherName;
+            return who ? (
+              <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <User className="size-3.5" />
+                {who}
+              </p>
+            ) : null;
+          })()}
+          {!slot.activity && slot.room && (
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MapPin className="size-3.5" />
               {slot.room}

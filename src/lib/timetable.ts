@@ -15,6 +15,10 @@ export type TimetableSlot = {
   subjectName: string;
   subjectCode: string;
   colorHex: string | null;
+  /** วิชาสอนหลายคน → ซ่อนชื่อครูในมุมมองนักเรียน (variant "class"). */
+  hideTeacher?: boolean;
+  /** คาบกิจกรรมส่วนกลาง (ชุมนุม/อบรม) — ไม่มีครู/ห้อง, แสดงป้ายอย่างเดียว. */
+  activity?: boolean;
   teacherId: string;
   teacherName: string;
   classId: string;

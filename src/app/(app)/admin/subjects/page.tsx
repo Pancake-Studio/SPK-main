@@ -30,6 +30,7 @@ export default async function AdminSubjectsPage() {
             subjectCode: s.subjectCode,
             colorHex: s.colorHex,
             schedulesCount: s._count.schedules,
+            hideTeacher: s.hideTeacherForStudents,
           }))}
         />
       )}

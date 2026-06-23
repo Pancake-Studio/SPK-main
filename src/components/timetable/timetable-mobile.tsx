@@ -124,9 +124,19 @@ export function TimetableMobile({
                               <span className="truncate font-semibold text-foreground">{slot!.subjectName}</span>
                             </div>
                             <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
-                              <User className="size-3" />
-                              {variant === "teacher" ? slot!.className : slot!.teacherName}
-                              {slot!.room && (
+                              {slot!.activity ? (
+                                <span className="font-medium">กิจกรรม · ทุกห้อง</span>
+                              ) : (() => {
+                                // Class view hides the teacher for multi-teacher subjects.
+                                const who = variant === "teacher" ? slot!.className : slot!.hideTeacher ? null : slot!.teacherName;
+                                return who ? (
+                                  <>
+                                    <User className="size-3" />
+                                    {who}
+                                  </>
+                                ) : null;
+                              })()}
+                              {!slot!.activity && slot!.room && (
                                 <>
                                   <MapPin className="ml-1 size-3" />
                                   {slot!.room}

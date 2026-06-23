@@ -1,7 +1,7 @@
 import { GraduationCap, UserCog } from "lucide-react";
 import { requireTeacherProfile } from "@/lib/auth";
 import {
-  getAdvisorClass,
+  getAdvisorContext,
   listAdvisoryStudents,
 } from "@/server/services/teacher-self.service";
 import { PageHeader } from "@/components/page-header";
@@ -16,7 +16,7 @@ export const metadata = { title: "นักเรียนในที่ปร�
 
 export default async function TeacherAdvisoryPage() {
   const { teacher } = await requireTeacherProfile();
-  const klass = await getAdvisorClass(teacher.id);
+  const { klass, rooms } = await getAdvisorContext(teacher.id);
 
   if (!klass) {
     return (
@@ -32,20 +32,26 @@ export default async function TeacherAdvisoryPage() {
   }
 
   const students = await listAdvisoryStudents(klass.id);
+  const roomOptions = rooms.map((r) => ({ value: r.id, label: r.className }));
+  const multiRoom = rooms.length > 1;
 
   return (
     <div>
       <PageHeader
         title="นักเรียนในที่ปรึกษา"
-        description={`ห้อง ${klass.className} · นักเรียน ${students.length} คน — เพิ่ม/แก้ไขได้เฉพาะห้องนี้`}
+        description={
+          `ห้อง ${klass.className} · นักเรียน ${students.length} คน` +
+          (multiRoom ? ` (รวมห้องย่อย ${rooms.map((r) => r.className).join(", ")})` : "")
+        }
       >
-        <AddAdvisoryStudentDialog className={klass.className} />
+        <AddAdvisoryStudentDialog className={klass.className} rooms={roomOptions} />
       </PageHeader>
 
       {students.length === 0 ? (
         <EmptyState icon={GraduationCap} title="ยังไม่มีนักเรียนในห้องนี้" description="เพิ่มนักเรียนคนแรก" />
       ) : (
         <AdvisoryStudentTable
+          rooms={roomOptions}
           students={students.map((s): AdvisoryStudentRow => ({
             id: s.id,
             title: s.title,
@@ -53,6 +59,8 @@ export default async function TeacherAdvisoryPage() {
             email: s.user.email,
             studentCode: s.studentCode,
             rollNumber: s.rollNumber,
+            classId: s.classId,
+            className: s.class.className,
           }))}
         />
       )}

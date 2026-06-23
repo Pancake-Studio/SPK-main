@@ -28,6 +28,7 @@ export type SubjectRow = {
   subjectCode: string;
   colorHex: string | null;
   schedulesCount: number;
+  hideTeacher: boolean;
 };
 
 export function SubjectTable({ subjects }: { subjects: SubjectRow[] }) {
@@ -123,7 +124,14 @@ export function SubjectTable({ subjects }: { subjects: SubjectRow[] }) {
                     style={{ backgroundColor: subject.colorHex ?? "var(--color-primary)" }}
                   />
                 </TableCell>
-                <TableCell className="font-medium text-foreground">{subject.subjectName}</TableCell>
+                <TableCell className="font-medium text-foreground">
+                  {subject.subjectName}
+                  {subject.hideTeacher && (
+                    <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                      ซ่อนชื่อครู
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="font-mono text-xs">{subject.subjectCode}</TableCell>
                 <TableCell className="text-center">{subject.schedulesCount}</TableCell>
                 <TableCell>

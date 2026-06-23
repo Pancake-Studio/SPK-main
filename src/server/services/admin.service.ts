@@ -4,7 +4,9 @@ import * as XLSX from "xlsx";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { SWAP_STATUS, ROLES, NOTIFICATION_TYPES } from "@/lib/constants";
+import { dayMeta } from "@/lib/timetable";
 import { notifyUsers } from "./notification.service";
+import { activityAt } from "./activity.service";
 import {
   teacherSchema,
   studentSchema,
@@ -263,18 +265,7 @@ export async function listStudentsPaged(opts: {
   return { rows, total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
-/** Reject a roll number already used by another student in the same class. */
-async function assertRollFree(classId: string, rollNumber?: number | null, excludeStudentId?: string) {
-  if (rollNumber == null) return;
-  const taken = await db.student.findFirst({
-    where: { classId, rollNumber, ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}) },
-    select: { id: true },
-  });
-  if (taken) throw new Error(`เลขที่ ${rollNumber} มีอยู่แล้วในห้องนี้`);
-}
-
 export async function createStudent(input: StudentInput) {
-  await assertRollFree(input.classId, input.rollNumber);
   const passwordHash = await hashPassword(input.password || DEFAULT_PASSWORD);
   return db.user.create({
     data: {
@@ -303,7 +294,6 @@ export async function deleteStudent(studentId: string) {
 export async function updateStudent(input: StudentUpdateInput) {
   const student = await db.student.findUnique({ where: { id: input.id }, select: { userId: true } });
   if (!student) throw new Error("ไม่พบข้อมูลนักเรียน");
-  await assertRollFree(input.classId, input.rollNumber, input.id);
   const updates: { passwordHash?: string } = {};
   if (input.password) {
     updates.passwordHash = await hashPassword(input.password);
@@ -420,6 +410,7 @@ export function createSubject(input: SubjectInput) {
       subjectName: input.subjectName,
       subjectCode: input.subjectCode,
       colorHex: input.colorHex || null,
+      hideTeacherForStudents: input.hideTeacherForStudents,
     },
   });
 }
@@ -431,6 +422,7 @@ export async function updateSubject(input: SubjectUpdateInput) {
       subjectName: input.subjectName,
       subjectCode: input.subjectCode,
       colorHex: input.colorHex || null,
+      hideTeacherForStudents: input.hideTeacherForStudents,
     },
   });
 }
@@ -487,6 +479,31 @@ export function listSchedules() {
   });
 }
 
+/** One teacher's timetable rows (with subject + class) for the grid editor. */
+export function listTeacherSlots(teacherId: string) {
+  return db.schedule.findMany({
+    where: { teacherId },
+    include: { subject: true, class: true },
+    orderBy: [{ day: "asc" }, { period: "asc" }],
+  });
+}
+
+export type SlotOccupant = { subjectId: string; multi: boolean };
+
+/** Map `${classId}|${day}|${period}` → the lesson occupying it (subject + whether
+ *  it is a multi-teacher subject). The editor uses this to block double-booking a
+ *  class, while still allowing a multi-teacher subject to be co-taught. */
+export async function classOccupancyMap(): Promise<Record<string, SlotOccupant>> {
+  const rows = await db.schedule.findMany({
+    select: { classId: true, day: true, period: true, subjectId: true, subject: { select: { hideTeacherForStudents: true } } },
+  });
+  const map: Record<string, SlotOccupant> = {};
+  for (const r of rows) {
+    map[`${r.classId}|${r.day}|${r.period}`] = { subjectId: r.subjectId, multi: r.subject.hideTeacherForStudents };
+  }
+  return map;
+}
+
 export function createSchedule(input: ScheduleInput) {
   return db.schedule.create({
     data: {
@@ -498,6 +515,74 @@ export function createSchedule(input: ScheduleInput) {
       room: input.room || null,
     },
   });
+}
+
+/** Friendly, user-facing conflict (caught by the action → returned as message). */
+export class ScheduleConflictError extends Error {}
+
+/** A class holds one lesson per (day, period) — EXCEPT a "multi-teacher" subject
+ *  (Subject.hideTeacherForStudents), which several teachers may co-teach on the
+ *  same slot. Stacking is allowed only when every existing lesson there is that
+ *  same multi-teacher subject as the one being added. */
+async function assertClassSlotFree(
+  classId: string,
+  day: string,
+  period: number,
+  subjectId: string,
+  exceptId?: string,
+) {
+  const clashes = await db.schedule.findMany({
+    where: { classId, day, period, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    include: { subject: true, teacher: { include: { user: true } }, class: true },
+  });
+  if (clashes.length === 0) return;
+  const stackable = clashes.every((c) => c.subjectId === subjectId && c.subject.hideTeacherForStudents);
+  if (stackable) return;
+  const c = clashes[0];
+  throw new ScheduleConflictError(
+    `ห้อง ${c.class.className} มีคาบเรียนอยู่แล้วใน${dayMeta(day)?.labelTh ?? day} คาบ ${period} ` +
+      `(${c.subject.subjectName} · ${c.teacher.user.name})`,
+  );
+}
+
+/** A teacher teaches one class per (day, period) — EXCEPT a multi-teacher subject,
+ *  which one teacher may run across several classrooms at once. Allowed only when
+ *  every existing lesson there is that same multi-teacher subject. */
+async function assertTeacherSlotFree(
+  teacherId: string,
+  day: string,
+  period: number,
+  subjectId: string,
+  exceptId?: string,
+) {
+  const clashes = await db.schedule.findMany({
+    where: { teacherId, day, period, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    include: { subject: true, class: true },
+  });
+  if (clashes.length === 0) return;
+  const stackable = clashes.every((c) => c.subjectId === subjectId && c.subject.hideTeacherForStudents);
+  if (stackable) return;
+  const c = clashes[0];
+  throw new ScheduleConflictError(
+    `ครูมีคาบสอนอยู่แล้วใน${dayMeta(day)?.labelTh ?? day} คาบ ${period} (ห้อง ${c.class.className})`,
+  );
+}
+
+/** Create or update one timetable slot with both conflict checks — used by the
+ *  grid editor. `id` present → update, else create. */
+export async function saveScheduleSlot(input: ScheduleInput & { id?: string }) {
+  const activity = await activityAt(input.day, input.period);
+  if (activity) {
+    throw new ScheduleConflictError(
+      `${dayMeta(input.day)?.labelTh ?? input.day} คาบ ${input.period} เป็นคาบกิจกรรม "${activity.label}" จัดคาบเรียนไม่ได้`,
+    );
+  }
+  await assertClassSlotFree(input.classId, input.day, input.period, input.subjectId, input.id);
+  await assertTeacherSlotFree(input.teacherId, input.day, input.period, input.subjectId, input.id);
+  if (input.id) {
+    return updateSchedule({ ...input, id: input.id });
+  }
+  return createSchedule(input);
 }
 
 export async function updateSchedule(input: ScheduleUpdateInput) {
@@ -619,23 +704,34 @@ export async function getImportLookups() {
   };
 }
 
+type ExpandOptions = { includeBase?: boolean };
+
 /** Expand a class name into all class IDs that belong to the same group.
  *
  *  Examples:
  *    - "M.5/3.2"  -> [id of M.5/3.2]
  *    - "M.5/3"    -> [id of M.5/3, id of M.5/3.1, id of M.5/3.2, ...]
- *      (only when sub-rooms like M.5/3.x exist)
+ *      (only when sub-rooms like M.5/3.x exist and includeBase is true)
+ *    - "M.5/3" with includeBase=false -> [id of M.5/3.1, id of M.5/3.2, ...]
+ *
+ *  `includeBase: false` is useful when the base group class has no students
+ *  (e.g. ม.5/3) and only the dotted sub-rooms (ม.5/3.1, ม.5/3.2) should
+ *  actually receive schedules/assignments.
  */
 export function expandClassGroupIds(
   className: string,
   classes: { id: string; className: string }[],
+  opts: ExpandOptions = {},
 ): string[] {
+  const { includeBase = true } = opts;
   const normalized = className.toUpperCase().trim();
   const byName = new Map(classes.map((c) => [c.className.toUpperCase(), c]));
   const exact = byName.get(normalized);
 
-  // If the requested name already points to a dotted sub-room, keep it exact.
-  if (normalized.includes(".")) {
+  // If the requested name already points to a dotted sub-room (ends with ".N",
+  // e.g. ม.5/3.1), keep it exact. NOTE: a plain `includes(".")` is WRONG here —
+  // Thai class names start with "ม." so every name contains a dot.
+  if (/\.\d+$/.test(normalized)) {
     return exact ? [exact.id] : [];
   }
 
@@ -648,9 +744,9 @@ export function expandClassGroupIds(
     return exact ? [exact.id] : [];
   }
 
-  // Base group + every sub-room.
+  // Dotted sub-rooms always participate.
   const result = subRooms.map((c) => c.id);
-  if (exact) result.unshift(exact.id);
+  if (includeBase && exact) result.unshift(exact.id);
   return result;
 }
 
@@ -946,7 +1042,8 @@ export async function syncSubjects(rows: SyncRow[]): Promise<SyncResult> {
     const cur = byCode.get(code);
     try {
       if (cur) {
-        await updateSubject({ ...parsed.data, id: cur.id });
+        // The import sheet has no "hide teacher" column → keep the existing flag.
+        await updateSubject({ ...parsed.data, id: cur.id, hideTeacherForStudents: cur.hideTeacherForStudents });
         result.updated++;
       } else {
         await createSubject(parsed.data);
@@ -980,7 +1077,9 @@ export async function syncSchedules(rows: SyncRow[]): Promise<SyncResult> {
 
   for (const row of rows) {
     const className = str(row, "className").toUpperCase();
-    const groupIds = expandClassGroupIds(className, classes);
+    // Base-group classes (e.g. ม.5/3) have no students; only the dotted
+    // sub-rooms should actually hold schedule rows.
+    const groupIds = expandClassGroupIds(className, classes, { includeBase: false });
     const subjectId = subjectByCode.get(str(row, "subjectCode").toUpperCase());
     const rawTeacherCode = str(row, "teacherCode").toUpperCase();
     // Excel often drops leading zeros from numeric teacher codes (101 -> "0101").

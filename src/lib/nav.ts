@@ -15,6 +15,7 @@ export type NavIcon =
   | "subjects"
   | "schedule"
   | "periods"
+  | "activities"
   | "tasks"
   | "swap"
   | "delegate"
@@ -33,6 +34,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { label: "วิชา", href: "/admin/subjects", icon: "subjects" },
     { label: "ตารางสอน", href: "/admin/schedule", icon: "schedule" },
     { label: "เวลาเรียน / คาบ", href: "/admin/periods", icon: "periods" },
+    { label: "คาบกิจกรรม", href: "/admin/activities", icon: "activities" },
     { label: "คำขอแลกคาบ", href: "/admin/swaps", icon: "swap" },
     { label: "ผู้ดูแลระบบ", href: "/admin/admins", icon: "admins" },
     { label: "ประกาศ", href: "/admin/announcements", icon: "announce" },

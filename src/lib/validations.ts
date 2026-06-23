@@ -127,6 +127,12 @@ export const subjectSchema = z.object({
     .regex(/^#([0-9a-fA-F]{6})$/, "ต้องเป็นสี HEX เช่น #7C3AED")
     .optional()
     .or(z.literal("")),
+  // วิชาที่ครูสอนหลายคน → ซ่อนชื่อครูจากนักเรียน. From a checkbox/FormData the
+  // value is "on"/"true"/"1" when ticked, or absent (→ false) when not.
+  hideTeacherForStudents: z.preprocess(
+    (v) => v === true || v === "on" || v === "true" || v === "1",
+    z.boolean(),
+  ),
 });
 export type SubjectInput = z.infer<typeof subjectSchema>;
 
@@ -143,6 +149,18 @@ export const scheduleSchema = z.object({
   room: z.string().trim().max(60).optional(),
 });
 export type ScheduleInput = z.infer<typeof scheduleSchema>;
+
+export const activitySchema = z.object({
+  day: z.enum(DAY_KEYS as [string, ...string[]]),
+  period: z.coerce.number().int().min(1, "คาบไม่ถูกต้อง").max(MAX_PERIOD_NUMBER, "คาบไม่ถูกต้อง"),
+  label: z.string().trim().min(1, "กรอกชื่อกิจกรรม").max(120),
+  colorHex: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{6})$/, "ต้องเป็นสี HEX เช่น #7C3AED")
+    .optional()
+    .or(z.literal("")),
+});
+export type ActivityInput = z.infer<typeof activitySchema>;
 
 export const announcementSchema = z.object({
   title: z.string().trim().min(1, "กรอกหัวข้อ").max(160),
@@ -163,6 +181,8 @@ export const studentUpdateSchema = studentSchema.extend(withId);
 export const classUpdateSchema = classSchema.extend(withId);
 export const subjectUpdateSchema = subjectSchema.extend(withId);
 export const scheduleUpdateSchema = scheduleSchema.extend(withId);
+export const activityUpdateSchema = activitySchema.extend(withId);
+export type ActivityUpdateInput = z.infer<typeof activityUpdateSchema>;
 export type TeacherUpdateInput = z.infer<typeof teacherUpdateSchema>;
 export type StudentUpdateInput = z.infer<typeof studentUpdateSchema>;
 export type ClassUpdateInput = z.infer<typeof classUpdateSchema>;

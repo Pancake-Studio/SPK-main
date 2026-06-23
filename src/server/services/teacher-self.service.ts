@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { ROLES } from "@/lib/constants";
 import { dayMeta } from "@/lib/timetable";
+import { activityAt } from "./activity.service";
 import type {
   SubjectInput,
   SubjectUpdateInput,
@@ -42,6 +43,7 @@ export function createOwnSubject(teacherId: string, input: SubjectInput) {
       subjectName: input.subjectName,
       subjectCode: input.subjectCode,
       colorHex: input.colorHex || null,
+      hideTeacherForStudents: input.hideTeacherForStudents,
       ownerTeacherId: teacherId,
     },
   });
@@ -56,6 +58,7 @@ export async function updateOwnSubject(_teacherId: string, input: SubjectUpdateI
       subjectName: input.subjectName,
       subjectCode: input.subjectCode,
       colorHex: input.colorHex || null,
+      hideTeacherForStudents: input.hideTeacherForStudents,
     },
   });
 }
@@ -79,15 +82,51 @@ async function assertSubjectAllowed(_teacherId: string, subjectId: string) {
 }
 
 /** The teacher must be free at (day, period) — they can't teach two classes at
- *  once. `exceptId` skips the slot being edited. */
-async function assertTeacherFree(teacherId: string, day: string, period: number, exceptId?: string) {
-  const clash = await db.schedule.findFirst({
+ *  once, EXCEPT a multi-teacher subject which may run across several classrooms
+ *  at the same time. `exceptId` skips the slot being edited. */
+async function assertTeacherFree(teacherId: string, day: string, period: number, subjectId: string, exceptId?: string) {
+  const clashes = await db.schedule.findMany({
     where: { teacherId, day, period, ...(exceptId ? { id: { not: exceptId } } : {}) },
-    select: { id: true },
+    include: { subject: true },
   });
-  if (clash) {
-    throw new TeacherSelfError(`คุณมีคาบสอนอยู่แล้วใน ${dayMeta(day)?.labelTh ?? day} คาบ ${period}`);
+  if (clashes.length === 0) return;
+  const stackable = clashes.every((c) => c.subjectId === subjectId && c.subject.hideTeacherForStudents);
+  if (stackable) return;
+  throw new TeacherSelfError(`คุณมีคาบสอนอยู่แล้วใน${dayMeta(day)?.labelTh ?? day} คาบ ${period}`);
+}
+
+/** Block scheduling a normal lesson onto a school-wide activity slot. */
+async function assertNotActivitySlot(day: string, period: number) {
+  const activity = await activityAt(day, period);
+  if (activity) {
+    throw new TeacherSelfError(
+      `${dayMeta(day)?.labelTh ?? day} คาบ ${period} เป็นคาบกิจกรรม "${activity.label}" จัดคาบสอนไม่ได้`,
+    );
   }
+}
+
+/** A class holds one lesson per (day, period) — except a "multi-teacher" subject
+ *  (Subject.hideTeacherForStudents) may be co-taught. Stacking is allowed only
+ *  when every existing lesson there is that same multi-teacher subject. */
+async function assertClassSlotFree(
+  classId: string,
+  day: string,
+  period: number,
+  subjectId: string,
+  exceptId?: string,
+) {
+  const clashes = await db.schedule.findMany({
+    where: { classId, day, period, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    include: { subject: true, teacher: { include: { user: true } }, class: true },
+  });
+  if (clashes.length === 0) return;
+  const stackable = clashes.every((c) => c.subjectId === subjectId && c.subject.hideTeacherForStudents);
+  if (stackable) return;
+  const c = clashes[0];
+  throw new TeacherSelfError(
+    `ห้อง ${c.class.className} มีคาบเรียนอยู่แล้วใน${dayMeta(day)?.labelTh ?? day} คาบ ${period} ` +
+      `(${c.subject.subjectName} · ${c.teacher.user.name})`,
+  );
 }
 
 /** The teacher's own timetable rows (with ids) for the manage table. */
@@ -101,7 +140,9 @@ export function listOwnSchedule(teacherId: string) {
 
 export async function createOwnSchedule(teacherId: string, input: OwnScheduleInput) {
   await assertSubjectAllowed(teacherId, input.subjectId);
-  await assertTeacherFree(teacherId, input.day, input.period);
+  await assertNotActivitySlot(input.day, input.period);
+  await assertTeacherFree(teacherId, input.day, input.period, input.subjectId);
+  await assertClassSlotFree(input.classId, input.day, input.period, input.subjectId);
   return db.schedule.create({
     data: {
       classId: input.classId,
@@ -119,7 +160,9 @@ export async function updateOwnSchedule(teacherId: string, input: OwnScheduleUpd
   if (!slot) throw new TeacherSelfError("ไม่พบคาบสอน");
   if (slot.teacherId !== teacherId) throw new TeacherSelfError("แก้ไขได้เฉพาะคาบสอนของคุณเท่านั้น");
   await assertSubjectAllowed(teacherId, input.subjectId);
-  await assertTeacherFree(teacherId, input.day, input.period, input.id);
+  await assertNotActivitySlot(input.day, input.period);
+  await assertTeacherFree(teacherId, input.day, input.period, input.subjectId, input.id);
+  await assertClassSlotFree(input.classId, input.day, input.period, input.subjectId, input.id);
   return db.schedule.update({
     where: { id: input.id },
     data: {
@@ -157,26 +200,49 @@ export async function getAdvisorClass(teacherId: string) {
   return t?.advisorClass ?? null;
 }
 
-export async function listAdvisoryStudents(classId: string) {
+/** The advisor's class PLUS any dotted sub-rooms of it (auto-detected by name).
+ *  So an advisor of ม.5/3 manages ม.5/3.1, ม.5/3.2, and any future ม.5/3.x. A
+ *  normal class (no sub-rooms) just returns itself. */
+export async function advisorRooms(advisorClassId: string) {
+  const base = await db.class.findUnique({
+    where: { id: advisorClassId },
+    select: { id: true, className: true },
+  });
+  if (!base) return [];
+  return db.class.findMany({
+    where: { OR: [{ id: base.id }, { className: { startsWith: `${base.className}.` } }] },
+    orderBy: { className: "asc" },
+    select: { id: true, className: true },
+  });
+}
+
+/** Resolve a teacher's advisor class + the rooms they manage, for the page. */
+export async function getAdvisorContext(teacherId: string) {
+  const klass = await getAdvisorClass(teacherId);
+  if (!klass) return { klass: null, rooms: [] as { id: string; className: string }[] };
+  return { klass, rooms: await advisorRooms(klass.id) };
+}
+
+async function assertRoomInAdvisory(advisorClassId: string, classId: string) {
+  const rooms = await advisorRooms(advisorClassId);
+  if (!rooms.some((r) => r.id === classId)) {
+    throw new TeacherSelfError("เลือกได้เฉพาะห้องที่อยู่ในความดูแลของคุณเท่านั้น");
+  }
+}
+
+export async function listAdvisoryStudents(advisorClassId: string) {
+  const rooms = await advisorRooms(advisorClassId);
+  const ids = rooms.map((r) => r.id);
   return db.student.findMany({
-    where: { classId },
+    where: { classId: { in: ids } },
     include: { user: true, class: true },
-    orderBy: [{ rollNumber: "asc" }, { studentCode: "asc" }],
+    orderBy: [{ class: { className: "asc" } }, { rollNumber: "asc" }, { studentCode: "asc" }],
   });
 }
 
-async function assertRollFree(classId: string, rollNumber?: number | null, excludeStudentId?: string) {
-  if (rollNumber == null) return;
-  const taken = await db.student.findFirst({
-    where: { classId, rollNumber, ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}) },
-    select: { id: true },
-  });
-  if (taken) throw new TeacherSelfError(`เลขที่ ${rollNumber} มีอยู่แล้วในห้องนี้`);
-}
-
-/** Create a student — `classId` is forced to the advisor's class. */
+/** Create a student in one of the advisor's rooms (the class or a sub-room). */
 export async function createAdvisoryStudent(advisorClassId: string, input: StudentInput) {
-  await assertRollFree(advisorClassId, input.rollNumber);
+  await assertRoomInAdvisory(advisorClassId, input.classId);
   const passwordHash = await hashPassword(input.password || DEFAULT_PASSWORD);
   return db.user.create({
     data: {
@@ -189,7 +255,7 @@ export async function createAdvisoryStudent(advisorClassId: string, input: Stude
           studentCode: input.studentCode,
           title: input.title || null,
           rollNumber: input.rollNumber ?? null,
-          classId: advisorClassId,
+          classId: input.classId,
         },
       },
     },
@@ -202,9 +268,7 @@ export async function deleteAdvisoryStudent(advisorClassId: string, studentId: s
     select: { userId: true, classId: true },
   });
   if (!student) throw new TeacherSelfError("ไม่พบนักเรียน");
-  if (student.classId !== advisorClassId) {
-    throw new TeacherSelfError("ลบได้เฉพาะนักเรียนในห้องที่คุณเป็นที่ปรึกษาเท่านั้น");
-  }
+  await assertRoomInAdvisory(advisorClassId, student.classId);
   await db.user.delete({ where: { id: student.userId } });
 }
 
@@ -214,10 +278,10 @@ export async function updateAdvisoryStudent(advisorClassId: string, input: Stude
     select: { userId: true, classId: true },
   });
   if (!student) throw new TeacherSelfError("ไม่พบนักเรียน");
-  if (student.classId !== advisorClassId) {
-    throw new TeacherSelfError("แก้ไขได้เฉพาะนักเรียนในห้องที่คุณเป็นที่ปรึกษาเท่านั้น");
-  }
-  await assertRollFree(advisorClassId, input.rollNumber, input.id);
+  // Both the student's current room and the target room must be in the advisory
+  // (the advisor may move a student between their own sub-rooms).
+  await assertRoomInAdvisory(advisorClassId, student.classId);
+  await assertRoomInAdvisory(advisorClassId, input.classId);
   await db.$transaction([
     db.user.update({
       where: { id: student.userId },
@@ -229,12 +293,11 @@ export async function updateAdvisoryStudent(advisorClassId: string, input: Stude
     }),
     db.student.update({
       where: { id: input.id },
-      // classId stays pinned to the advisor's class — advisors can't move students out.
       data: {
         studentCode: input.studentCode,
         title: input.title || null,
         rollNumber: input.rollNumber ?? null,
-        classId: advisorClassId,
+        classId: input.classId,
       },
     }),
   ]);

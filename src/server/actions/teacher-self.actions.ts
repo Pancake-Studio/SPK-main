@@ -6,7 +6,6 @@ import {
   subjectSchema,
   subjectUpdateSchema,
   ownScheduleSchema,
-  ownScheduleUpdateSchema,
   studentSchema,
   studentUpdateSchema,
   announcementSchema,
@@ -76,40 +75,42 @@ export async function deleteOwnSubjectAction(id: string) {
 
 /* -------------------------------- Schedule ------------------------------ */
 
-export async function createOwnScheduleAction(_p: ActionState, formData: FormData): Promise<ActionState> {
-  const { teacher } = await requireTeacherProfile();
-  const parsed = ownScheduleSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
-  try {
-    await createOwnSchedule(teacher.id, parsed.data);
-  } catch (e) {
-    return fail(errMessage(e, "ไม่สามารถเพิ่มคาบสอนได้ (คาบนี้อาจถูกใช้แล้ว)"));
-  }
-  revalidatePath("/teacher/schedule/manage");
-  revalidatePath("/teacher/schedule");
-  return ok("เพิ่มคาบสอนเรียบร้อยแล้ว");
-}
-
-export async function updateOwnScheduleAction(_p: ActionState, formData: FormData): Promise<ActionState> {
-  const { teacher } = await requireTeacherProfile();
-  const parsed = ownScheduleUpdateSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
-  try {
-    await updateOwnSchedule(teacher.id, parsed.data);
-  } catch (e) {
-    return fail(errMessage(e, "ไม่สามารถแก้ไขคาบสอนได้"));
-  }
-  revalidatePath("/teacher/schedule/manage");
-  revalidatePath("/teacher/schedule");
-  return ok("แก้ไขคาบสอนเรียบร้อยแล้ว");
-}
-
 export async function deleteOwnScheduleAction(id: string) {
   const { teacher } = await requireTeacherProfile();
   try {
     await deleteOwnSchedule(teacher.id, id);
   } catch (e) {
     return { ok: false, error: errMessage(e, "ลบไม่สำเร็จ") };
+  }
+  revalidatePath("/teacher/schedule/manage");
+  revalidatePath("/teacher/schedule");
+  return { ok: true };
+}
+
+export type OwnSlotInput = {
+  id?: string;
+  classId: string;
+  subjectId: string;
+  // teacherId is accepted for a uniform editor signature but IGNORED — the
+  // signed-in teacher is always forced server-side.
+  teacherId?: string;
+  day: string;
+  period: number;
+  room?: string;
+};
+
+/** Grid-editor save (create or update one of the teacher's own slots). */
+export async function saveOwnScheduleSlotAction(
+  input: OwnSlotInput,
+): Promise<{ ok: boolean; error?: string }> {
+  const { teacher } = await requireTeacherProfile();
+  const parsed = ownScheduleSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
+  try {
+    if (input.id) await updateOwnSchedule(teacher.id, { ...parsed.data, id: input.id });
+    else await createOwnSchedule(teacher.id, parsed.data);
+  } catch (e) {
+    return { ok: false, error: errMessage(e, "บันทึกไม่สำเร็จ") };
   }
   revalidatePath("/teacher/schedule/manage");
   revalidatePath("/teacher/schedule");
@@ -127,7 +128,9 @@ async function requireAdvisorClass() {
 export async function createAdvisoryStudentAction(_p: ActionState, formData: FormData): Promise<ActionState> {
   const { klass } = await requireAdvisorClass();
   if (!klass) return fail("คุณไม่ได้เป็นครูที่ปรึกษาของห้องใด");
-  const parsed = studentSchema.safeParse({ ...Object.fromEntries(formData), classId: klass.id });
+  // classId comes from the form (the chosen room); the service checks it belongs
+  // to the advisor's class or one of its sub-rooms.
+  const parsed = studentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
   try {
     await createAdvisoryStudent(klass.id, parsed.data);
@@ -141,7 +144,7 @@ export async function createAdvisoryStudentAction(_p: ActionState, formData: For
 export async function updateAdvisoryStudentAction(_p: ActionState, formData: FormData): Promise<ActionState> {
   const { klass } = await requireAdvisorClass();
   if (!klass) return fail("คุณไม่ได้เป็นครูที่ปรึกษาของห้องใด");
-  const parsed = studentUpdateSchema.safeParse({ ...Object.fromEntries(formData), classId: klass.id });
+  const parsed = studentUpdateSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
   try {
     await updateAdvisoryStudent(klass.id, parsed.data);

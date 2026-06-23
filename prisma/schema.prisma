@@ -130,7 +130,7 @@ model Student {
   userId      String  @unique
   studentCode String  @unique
   title       String? // เด็กชาย / เด็กหญิง / นาย / นางสาว
-  rollNumber  Int? // เลขที่ในห้อง — unique per class (NULLs allowed/distinct)
+  rollNumber  Int? // เลขที่ในห้อง — duplicates allowed, highlighted in red in the UI
   classId     String
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -139,7 +139,7 @@ model Student {
   submissions   AssignmentSubmission[]
   personalTodos PersonalTodo[]
 
-  @@unique([classId, rollNumber])
+  @@index([classId, rollNumber])
   @@index([classId])
 }
 
@@ -164,6 +164,8 @@ model Subject {
   subjectName String
   subjectCode String  @unique
   colorHex    String? // optional accent for timetable cells
+  // วิชาที่สอนหลายคน: ซ่อนชื่อครูผู้สอนจากตารางเรียนฝั่งนักเรียน
+  hideTeacherForStudents Boolean @default(false)
   // วิชาของครู: when a teacher creates a subject it is "owned" by them and only
   // they (or an admin) may edit it. Admin-created subjects have a null owner.
   ownerTeacherId String?
@@ -172,6 +174,22 @@ model Subject {
   schedules Schedule[]
 
   @@index([ownerTeacherId])
+}
+
+/// A school-wide activity period (e.g. คาบชุมนุม, คาบอบรมคุณธรรม) — the SAME for
+/// every class and every teacher at a given weekday + period. No per-class
+/// subject/teacher rows; it is overlaid onto all timetables at read time.
+model ActivityPeriod {
+  id        String   @id @default(cuid())
+  day       String // MON | TUE | WED | THU | FRI
+  period    Int
+  label     String
+  colorHex  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([day, period])
+  @@index([day, period])
 }
 
 /// A single timetable slot: which teacher teaches which subject to which class
@@ -195,8 +213,12 @@ model Schedule {
   swapsAsTarget SwapRequest[] @relation("SwapTargetSchedule")
   delegations   Delegation[]
 
-  // A class can have only one lesson per day+period.
-  @@unique([classId, day, period])
+  // Normally one lesson per class+day+period, but a "multi-teacher" subject
+  // (Subject.hideTeacherForStudents) may be co-taught — several teachers on the
+  // same class slot. So uniqueness includes the teacher; the app layer still
+  // blocks two DIFFERENT subjects in one class slot.
+  @@unique([classId, day, period, teacherId])
+  @@index([classId, day, period])
   @@index([teacherId, day, period])
   @@index([day, period])
 }

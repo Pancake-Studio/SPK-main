@@ -11,6 +11,7 @@ import {
 } from "@/lib/weekly-overlay";
 import type { SlotMark, TimetableSlot } from "@/lib/timetable";
 import { getClassSchedule, getTeacherSchedule, scheduleInclude, toSlot } from "./schedule.service";
+import { withActivities } from "./activity.service";
 
 /** A swap is "in effect" while APPROVED (or while a cancellation is pending). */
 const ACTIVE_SWAP = [SWAP_STATUS.APPROVED, SWAP_STATUS.CANCEL_REQUESTED];
@@ -71,13 +72,31 @@ function toDelegationOverlay(d: DelegationRow): DelegationOverlay {
 
 /** A class's effective weekly timetable for the week containing `dateIso`,
  *  with this week's period-swaps + delegations applied (non-destructively). */
+/** Slots a sub-room's students actually attend: the sub-room's own schedule PLUS
+ *  the "umbrella" parent class's shared periods (e.g. IS taught to ม.5/3 as a
+ *  whole, held on the parent ม.5/3). The parent only fills (day, period) cells
+ *  the sub-room leaves free — the sub-room's own lesson wins on any conflict.
+ *  For a non-dotted class this is just its own schedule. */
+async function getClassScheduleWithUmbrella(classId: string): Promise<TimetableSlot[]> {
+  const own = await getClassSchedule(classId);
+  const klass = await db.class.findUnique({ where: { id: classId }, select: { className: true } });
+  if (!klass) return own;
+  const parentName = klass.className.replace(/\.\d+$/, "");
+  if (parentName === klass.className) return own; // not a dotted sub-room
+  const parent = await db.class.findFirst({ where: { className: parentName }, select: { id: true } });
+  if (!parent) return own;
+  const parentSlots = await getClassSchedule(parent.id);
+  const taken = new Set(own.map((s) => `${s.day}#${s.period}`));
+  return [...own, ...parentSlots.filter((s) => !taken.has(`${s.day}#${s.period}`))];
+}
+
 export async function getClassEffective(
   classId: string,
   dateIso: string,
 ): Promise<EffectiveSchedule> {
   const weekStart = weekStartOf(dateIso);
   const [base, swaps, dels] = await Promise.all([
-    getClassSchedule(classId),
+    getClassScheduleWithUmbrella(classId),
     activeSwaps(weekStart),
     activeDelegations(weekStart),
   ]);
@@ -89,7 +108,7 @@ export async function getClassEffective(
 
   const delOv = dels.filter((d) => d.schedule.classId === classId).map(toDelegationOverlay);
   const delMarks = applyDelegations(slots, delOv); // class view → show covering teacher
-  return { slots, marks: { ...marks, ...delMarks } };
+  return { slots: await withActivities(slots), marks: { ...marks, ...delMarks } };
 }
 
 /** A teacher's effective weekly timetable for the week containing `dateIso`.
@@ -136,5 +155,5 @@ export async function getTeacherEffective(
 
   const { slots, marks } = applySwaps(ext, mySwaps.map(toSwapOverlay));
   const delMarks = applyDelegations(slots, myDels.map(toDelegationOverlay), teacherId);
-  return { slots, marks: { ...marks, ...delMarks } };
+  return { slots: await withActivities(slots), marks: { ...marks, ...delMarks } };
 }
