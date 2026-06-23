@@ -187,6 +187,13 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 - **ตรวจสอบ (ไม่แตะข้อมูลจริง)**: `tsc` ✅ · `next build` (35 routes, +/admin/admins, +/teacher/{subjects,schedule/manage,advisory}) ✅ · unit-test validations 8 เคส (blank password→undefined, รหัสสั้นยังถูกปฏิเสธ, ownSchedule ไม่มี teacherId ฯลฯ) + นับ DB read-only ผ่าน ✅ · ข้อมูลครบ: นักเรียน 2 / ครู 31 / วิชา 123 / ห้อง 21 / ตาราง 484 · อีเมลแอดมิน = admin@suntisuk.ac.th ✅
 - **หมายเหตุ**: ไม่ได้รัน create/update จริงที่เขียนข้อมูล/แจ้งเตือนผู้ใช้จริง — เทสต์เฉพาะ schema/build + อ่าน DB · **ต้อง restart dev server** (Prisma client มีฟิลด์ใหม่ ownerTeacherId/advisorClassId)
 
+### 2026-06-23 — รองรับมอบหมายงานเฉพาะห้องย่อย (เช่น ม.5/3.2)
+- **คำสั่งผู้ใช้**: ต้องการมอบหมายงานได้เฉพาะห้องย่อย เช่น `ม.5/3.2` ไม่ใช่ทั้งกลุ่ม
+- **แก้ไข**:
+  - [src/app/(app)/teacher/assignments/[className]/page.tsx](src/app/(app)/teacher/assignments/[className]/page.tsx): รองรับทั้งห้องกลุ่มและห้องย่อยใน navigation tabs · ถ้าเลือกห้องย่อยจะสร้างงานเฉพาะห้องนั้น · ถ้าเลือกห้องกลุ่มจะยังคง auto-expand ไปห้องย่อย
+  - ดึงรายชื่อนักเรียนของห้องที่เลือก (หรือรวมทุกห้องย่อยถ้าเป็นห้องกลุ่ม) ให้ dialog
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
 ### 2026-06-23 — หน้ามอบหมายงานครูแยกเป็น page ตามห้องกลุ่ม + auto-expand ไปห้องย่อย
 - **คำสั่งผู้ใช้**: ต้องการแยก page จริง ๆ เช่น `/teacher/assignments/ม.4/3` และมอบหมายในห้องกลุ่มแล้วให้นักเรียนทุกห้องย่อยได้งานด้วย
 - **แก้ไข**:
@@ -657,3 +664,8 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 - แก้บั๊ก `Button asChild` ส่ง child ซ้อนเข้า Radix Slot (landing 500)
 - **ตรวจสอบ:** `tsc` ✅ · `next build` (22 routes) ✅ · smoke-test ทุกหน้า/ทุกบทบาท = 200, RBAC ✅, 0 errors
 - เพิ่มเอกสาร: `PROGRESS.md`, `README.md`; ตั้งค่า `.gitignore` (เก็บ .env.example, ไม่เก็บ dev.db)
+
+
+## Latest build
+
+Build passes.
