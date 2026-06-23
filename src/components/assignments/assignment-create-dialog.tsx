@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { FileUpload } from "@/components/attachments/file-upload";
 import type { AttachmentMeta } from "@/lib/attachment";
@@ -184,21 +185,23 @@ export function AssignmentCreateDialog({
               </button>
             </div>
             {mode === "some" && (
-              <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+              <ScrollArea className="h-44 rounded-md border border-border p-2">
                 {students.length === 0 ? (
                   <p className="px-1 py-2 text-sm text-muted-foreground">ไม่มีนักเรียนในห้องนี้</p>
                 ) : (
-                  students.map((s) => (
-                    <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-                      <input type="checkbox" checked={picked.has(s.id)} onChange={() => togglePick(s.id)} className="size-4" />
-                      <span className="w-8 shrink-0 text-center font-semibold text-muted-foreground">
-                        {s.rollNumber ?? "–"}
-                      </span>
-                      <span>{s.title ? `${s.title} ` : ""}{s.name}</span>
-                    </label>
-                  ))
+                  <div className="space-y-1">
+                    {students.map((s) => (
+                      <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                        <input type="checkbox" checked={picked.has(s.id)} onChange={() => togglePick(s.id)} className="size-4" />
+                        <span className="w-8 shrink-0 text-center font-semibold text-muted-foreground">
+                          {s.rollNumber ?? "–"}
+                        </span>
+                        <span>{s.title ? `${s.title} ` : ""}{s.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 )}
-              </div>
+              </ScrollArea>
             )}
           </div>
 

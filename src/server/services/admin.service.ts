@@ -618,7 +618,9 @@ export async function getImportLookups() {
     db.teacher.findMany({ select: { id: true, teacherCode: true } }),
   ]);
   return {
+    classes,
     classByName: new Map(classes.map((c) => [c.className.toUpperCase(), c.id])),
+    classById: new Map(classes.map((c) => [c.id, c.className])),
     subjectByCode: new Map(
       subjects.map((s) => [s.subjectCode.toUpperCase(), s.id]),
     ),
@@ -626,6 +628,41 @@ export async function getImportLookups() {
       teachers.map((t) => [t.teacherCode.toUpperCase(), t.id]),
     ),
   };
+}
+
+/** Expand a class name into all class IDs that belong to the same group.
+ *
+ *  Examples:
+ *    - "M.5/3.2"  -> [id of M.5/3.2]
+ *    - "M.5/3"    -> [id of M.5/3, id of M.5/3.1, id of M.5/3.2, ...]
+ *      (only when sub-rooms like M.5/3.x exist)
+ */
+export function expandClassGroupIds(
+  className: string,
+  classes: { id: string; className: string }[],
+): string[] {
+  const normalized = className.toUpperCase().trim();
+  const byName = new Map(classes.map((c) => [c.className.toUpperCase(), c]));
+  const exact = byName.get(normalized);
+
+  // If the requested name already points to a dotted sub-room, keep it exact.
+  if (normalized.includes(".")) {
+    return exact ? [exact.id] : [];
+  }
+
+  const prefix = `${normalized}.`;
+  const subRooms = classes
+    .filter((c) => c.className.toUpperCase().startsWith(prefix))
+    .sort((a, b) => a.className.localeCompare(b.className));
+
+  if (subRooms.length === 0) {
+    return exact ? [exact.id] : [];
+  }
+
+  // Base group + every sub-room.
+  const result = subRooms.map((c) => c.id);
+  if (exact) result.unshift(exact.id);
+  return result;
 }
 
 /* ------------------------------- Excel Export --------------------------- */
@@ -944,17 +981,17 @@ export async function syncSubjects(rows: SyncRow[]): Promise<SyncResult> {
 }
 
 export async function syncSchedules(rows: SyncRow[]): Promise<SyncResult> {
-  const [existing, { classByName, subjectByCode, teacherByCode }] = await Promise.all([
+  const [existing, { classes, classById, subjectByCode, teacherByCode }] = await Promise.all([
     db.schedule.findMany({ include: { class: true } }),
     getImportLookups(),
   ]);
-  const byKey = new Map(existing.map((s) => [`${s.class.className.toUpperCase()}|${s.day}|${s.period}`, s.id]));
+  const keyToId = new Map(existing.map((s) => [`${s.class.className.toUpperCase()}|${s.day}|${s.period}`, s.id]));
   const seen = new Set<string>();
   const result: SyncResult = { added: 0, updated: 0, deleted: 0, skipped: 0 };
 
   for (const row of rows) {
     const className = str(row, "className").toUpperCase();
-    const classId = classByName.get(className);
+    const groupIds = expandClassGroupIds(className, classes);
     const subjectId = subjectByCode.get(str(row, "subjectCode").toUpperCase());
     const rawTeacherCode = str(row, "teacherCode").toUpperCase();
     // Excel often drops leading zeros from numeric teacher codes (101 -> "0101").
@@ -966,8 +1003,15 @@ export async function syncSchedules(rows: SyncRow[]): Promise<SyncResult> {
         : undefined);
     const day = str(row, "day").toUpperCase().slice(0, 3);
     const period = row.period;
+
+    if (groupIds.length === 0) {
+      result.skipped++;
+      continue;
+    }
+
+    // Validate once; classId is the only field that varies inside the group.
     const parsed = scheduleSchema.safeParse({
-      classId,
+      classId: groupIds[0],
       subjectId,
       teacherId,
       day,
@@ -978,19 +1022,24 @@ export async function syncSchedules(rows: SyncRow[]): Promise<SyncResult> {
       result.skipped++;
       continue;
     }
-    const key = `${className}|${parsed.data.day}|${parsed.data.period}`;
-    seen.add(key);
-    const curId = byKey.get(key);
-    try {
-      if (curId) {
-        await updateSchedule({ ...parsed.data, id: curId });
-        result.updated++;
-      } else {
-        await createSchedule(parsed.data);
-        result.added++;
+
+    for (const classId of groupIds) {
+      const name = classById.get(classId)?.toUpperCase() ?? "";
+      const key = `${name}|${parsed.data.day}|${parsed.data.period}`;
+      seen.add(key);
+      const curId = keyToId.get(key);
+      try {
+        if (curId) {
+          await updateSchedule({ ...parsed.data, id: curId, classId });
+          result.updated++;
+        } else {
+          const created = await createSchedule({ ...parsed.data, classId });
+          keyToId.set(key, created.id);
+          result.added++;
+        }
+      } catch {
+        result.skipped++;
       }
-    } catch {
-      result.skipped++;
     }
   }
 

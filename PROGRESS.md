@@ -187,6 +187,20 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 - **ตรวจสอบ (ไม่แตะข้อมูลจริง)**: `tsc` ✅ · `next build` (35 routes, +/admin/admins, +/teacher/{subjects,schedule/manage,advisory}) ✅ · unit-test validations 8 เคส (blank password→undefined, รหัสสั้นยังถูกปฏิเสธ, ownSchedule ไม่มี teacherId ฯลฯ) + นับ DB read-only ผ่าน ✅ · ข้อมูลครบ: นักเรียน 2 / ครู 31 / วิชา 123 / ห้อง 21 / ตาราง 484 · อีเมลแอดมิน = admin@suntisuk.ac.th ✅
 - **หมายเหตุ**: ไม่ได้รัน create/update จริงที่เขียนข้อมูล/แจ้งเตือนผู้ใช้จริง — เทสต์เฉพาะ schema/build + อ่าน DB · **ต้อง restart dev server** (Prisma client มีฟิลด์ใหม่ ownerTeacherId/advisorClassId)
 
+### 2026-06-23 — ตารางสอนห้องกลุ่ม (/3) auto-expand ไปยังห้องย่อย (/3.1, /3.2)
+- **เหตุผล/คำสั่งผู้ใช้**: ห้องเรียนกลุ่ม เช่น `ม.5/3` หมายถึงนักเรียนทุกห้องย่อย (`ม.5/3.1`, `ม.5/3.2` ...) เรียนรวมกัน ต้องการให้ระบบ auto-expand คาบของห้องกลุ่มไปยังทุกห้องย่อยโดยอัตโนมัติ
+- **แก้ไข**:
+  - [src/server/services/admin.service.ts](src/server/services/admin.service.ts): เพิ่ม `expandClassGroupIds()` + ปรับ `syncSchedules()` ให้ขยายแถวที่ชื่อห้องเป็นกลุ่ม (ไม่มี `.x`) ไปสร้าง/อัปเดตตารางให้ทุกห้องย่อยที่มีอยู่จริง
+  - `getImportLookups()` คืนค่า `classes`/`classById` เพิ่งใช้หา group
+  - สร้างสคริปต์ [scripts/expand-group-schedules.mjs](scripts/expand-group-schedules.mjs) สำหรับขยายข้อมูลตารางเรียนเดิมใน DB ครั้งเดียว
+- **ผลลัพธ์ใน DB จริง**: ขยายคาบของ `ม.4/3`, `ม.5/3`, `ม.6/3` ไปยังห้องย่อยแล้ว (สร้าง 110 แถวใหม่ ข้าม 419 แถวที่มีอยู่แล้ว)
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
+### 2026-06-23 — แก้รายชื่อนักเรียนในหน้าสั่งงานรายบุคคลเลื่อนไม่ได้
+- **ปัญหา**: ผู้ใช้รายงานว่าเลือกนักเรียนรายบุคคลใน dialog สั่งงานแล้วรายชื่อเลื่อนไม่ได้
+- **แก้ไข**: [src/components/assignments/assignment-create-dialog.tsx](src/components/assignments/assignment-create-dialog.tsx) — เปลี่ยนรายชื่อนักเรียนจาก `div` ที่ใช้ `max-h-44 overflow-y-auto` เป็น `<ScrollArea className="h-44">` (Radix ScrollArea) ซึ่งรองรับการเลื่อนทั้ง mouse wheel และ touch ได้ดีกว่า
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
 ### 2026-06-23 — ทำให้เปลี่ยนหน้าเร็วขึ้น (non-blocking shell + prefetch sidebar)
 - **เหตุผล/คำสั่งผู้ใช้**: ต้องการให้เปลี่ยนหน้าทันทีเมื่อกด sidebar แล้วเนื้อหาโหลดทีหลัง ไม่ต้องรอข้อมูล
 - **แก้ไข**:
