@@ -35,7 +35,7 @@ model User {
   sessions       Session[]
   notifications  Notification[]
   auditLogs      AuditLog[]
-  announcements  Announcement[] @relation("AnnouncementAuthor")
+  announcements  Announcement[] @relation(" ")
   swapDecisions  SwapRequest[]  @relation("SwapDecidedBy")
   swapLogs       SwapLog[]      @relation("SwapLogActor")
   pushSubscriptions PushSubscription[]

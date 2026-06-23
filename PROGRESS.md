@@ -145,6 +145,12 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 
 ## 6. Session Log (บันทึกทุกครั้งที่ทำงาน)
 
+### 2026-06-23 — แก้ build error `/announcements/[id]` บน Vercel (jsdom)
+- **ปัญหา**: Build บน Vercel ล้มที่ `/announcements/[id]` — `isomorphic-dompurify` ดึง `jsdom` เข้า bundle แล้วหา `../data/patch.json` ไม่เจอใน serverless environment
+- **แก้ไข**: เปลี่ยน `SafeHtml` ([components/safe-html.tsx](src/components/safe-html.tsx)) จาก `isomorphic-dompurify` เป็น `sanitize-html` (pure Node.js, server-safe) พร้อม allowlist tags/attributes สำหรับ rich-text ประกาศ
+- **ลบ**: `isomorphic-dompurify`, `dompurify`, `@types/dompurify` ออกจาก dependencies
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ✅ (38 routes) · `/announcements/[id]` build ผ่าน
+
 ### 2026-06-23 — แก้เวลาบน Vercel ผิด (timezone drift) ให้เป็น Asia/Bangkok
 - **โจทย์**: Deploy บน Vercel แล้ว "วันนี้" / "คาบปัจจุบัน" ไม่ตรง เพราะ server รัน UTC แต่แอปคิดเป็น local time
 - **แก้ไข**: เพิ่ม helper `bangkokDate()` + `bangkokMinutesSinceMidnight()` ใน [lib/timezone.ts](src/lib/timezone.ts) โดยใช้ `Intl.DateTimeFormat` ดึง wall-clock ของ `Asia/Bangkok` แล้วสร้าง Date ที่ local getters อ่านเป็นเวลาไทย
