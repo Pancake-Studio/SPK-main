@@ -14,9 +14,7 @@ import type { NextConfig } from "next";
  * Add any other host you serve the app from (LAN IP, localhost).
  */
 const ORIGINS = [
-  "nallyz-dev.fe-grp.com",
-  "172.24.45.38:3000",
-  "localhost:3000",
+  "spk-virid.vercel.app",
 ];
 
 /**
