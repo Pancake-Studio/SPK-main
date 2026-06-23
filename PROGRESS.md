@@ -187,6 +187,15 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 - **ตรวจสอบ (ไม่แตะข้อมูลจริง)**: `tsc` ✅ · `next build` (35 routes, +/admin/admins, +/teacher/{subjects,schedule/manage,advisory}) ✅ · unit-test validations 8 เคส (blank password→undefined, รหัสสั้นยังถูกปฏิเสธ, ownSchedule ไม่มี teacherId ฯลฯ) + นับ DB read-only ผ่าน ✅ · ข้อมูลครบ: นักเรียน 2 / ครู 31 / วิชา 123 / ห้อง 21 / ตาราง 484 · อีเมลแอดมิน = admin@suntisuk.ac.th ✅
 - **หมายเหตุ**: ไม่ได้รัน create/update จริงที่เขียนข้อมูล/แจ้งเตือนผู้ใช้จริง — เทสต์เฉพาะ schema/build + อ่าน DB · **ต้อง restart dev server** (Prisma client มีฟิลด์ใหม่ ownerTeacherId/advisorClassId)
 
+### 2026-06-23 — หน้ามอบหมายงานครูแยกเป็น page ตามห้องกลุ่ม + auto-expand ไปห้องย่อย
+- **คำสั่งผู้ใช้**: ต้องการแยก page จริง ๆ เช่น `/teacher/assignments/ม.4/3` และมอบหมายในห้องกลุ่มแล้วให้นักเรียนทุกห้องย่อยได้งานด้วย
+- **แก้ไข**:
+  - [src/app/(app)/teacher/assignments/page.tsx](src/app/(app)/teacher/assignments/page.tsx): redirect ไปหน้าแรกของห้องกลุ่ม
+  - [src/app/(app)/teacher/assignments/[className]/page.tsx](src/app/(app)/teacher/assignments/[className]/page.tsx): หน้า dynamic route แยกตามชื่อห้องกลุ่ม แสดงแท็บเปลี่ยนห้อง ดึงงานทุกห้องย่อยในกลุ่ม
+  - [src/server/services/assignment.service.ts](src/server/services/assignment.service.ts): `createAssignment` ขยายไปสร้างงานให้ทุกห้องย่อยในกลุ่ม (ใช้ `expandClassGroupIds` จาก admin.service) · เพิ่ม `listTeacherAssignmentsByClassName`
+  - [src/server/actions/assignment.actions.ts](src/server/actions/assignment.actions.ts): รับจำนวนห้องที่สร้างกลับมาแสดง และ `revalidatePath("/teacher/assignments", "layout")`
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน (route `/teacher/assignments/[className]` เพิ่มขึ้น) ✅
+
 ### 2026-06-23 — แยกหน้ามอบหมายงานของครูตามห้องเรียน
 - **คำสั่งผู้ใช้**: หน้ามอบหมายงานของครูต้องแยกเป็น page ตามห้องเรียน
 - **แก้ไข**:

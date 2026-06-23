@@ -13,19 +13,19 @@ export async function createAssignmentAction(input: AssignmentInput) {
     return { ok: false as const, error: "ตรวจสอบข้อมูล", fieldErrors: fieldErrorsFromZod(parsed.error) };
   }
   try {
-    await createAssignment(teacher.id, user.id, parsed.data);
+    const count = await createAssignment(teacher.id, user.id, parsed.data);
+    revalidatePath("/teacher/assignments", "layout");
+    revalidatePath("/student/todos");
+    return { ok: true as const, message: `มอบหมายงานเรียบร้อยแล้ว (${count} ห้อง)` };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "มอบหมายงานไม่สำเร็จ" };
   }
-  revalidatePath("/teacher/assignments");
-  revalidatePath("/student/todos");
-  return { ok: true as const, message: "มอบหมายงานเรียบร้อยแล้ว" };
 }
 
 export async function deleteAssignmentAction(id: string) {
   const { teacher } = await requireTeacherProfile();
   await deleteAssignment(id, teacher.id);
-  revalidatePath("/teacher/assignments");
+  revalidatePath("/teacher/assignments", "layout");
   revalidatePath("/student/todos");
   return { ok: true as const };
 }
