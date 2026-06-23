@@ -1,5 +1,5 @@
 /* SPK Platform service worker — install + Web Push + click handling */
-/* sw-version: 4 — no clients.claim() (fixes first-load "can't click until refresh") */
+/* sw-version: 5 — no clients.claim(), explicit RSC pass-through */
 
 self.addEventListener("install", (event) => {
   // Activate this SW as soon as it installs, so updates land on the next load.
@@ -30,6 +30,12 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/_next") || url.pathname === "/__webpack_hmr") {
     return;
   }
+  // Also skip React Server Component fetches explicitly; Next.js uses headers
+  // like `RSC: 1` and `Accept: text/x-component` for soft navigations.
+  const isRSC =
+    req.headers.get("RSC") === "1" ||
+    req.headers.get("Accept")?.includes("text/x-component") === true;
+  if (isRSC) return;
   // Everything else also falls through to the network automatically.
 });
 

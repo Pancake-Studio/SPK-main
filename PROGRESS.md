@@ -187,6 +187,23 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 - **ตรวจสอบ (ไม่แตะข้อมูลจริง)**: `tsc` ✅ · `next build` (35 routes, +/admin/admins, +/teacher/{subjects,schedule/manage,advisory}) ✅ · unit-test validations 8 เคส (blank password→undefined, รหัสสั้นยังถูกปฏิเสธ, ownSchedule ไม่มี teacherId ฯลฯ) + นับ DB read-only ผ่าน ✅ · ข้อมูลครบ: นักเรียน 2 / ครู 31 / วิชา 123 / ห้อง 21 / ตาราง 484 · อีเมลแอดมิน = admin@suntisuk.ac.th ✅
 - **หมายเหตุ**: ไม่ได้รัน create/update จริงที่เขียนข้อมูล/แจ้งเตือนผู้ใช้จริง — เทสต์เฉพาะ schema/build + อ่าน DB · **ต้อง restart dev server** (Prisma client มีฟิลด์ใหม่ ownerTeacherId/advisorClassId)
 
+### 2026-06-23 — ทำให้เปลี่ยนหน้าเร็วขึ้น (non-blocking shell + prefetch sidebar)
+- **เหตุผล/คำสั่งผู้ใช้**: ต้องการให้เปลี่ยนหน้าทันทีเมื่อกด sidebar แล้วเนื้อหาโหลดทีหลัง ไม่ต้องรอข้อมูล
+- **แก้ไข**:
+  - [src/app/(app)/layout.tsx](src/app/(app)/layout.tsx): เลิก `await` ข้อมูลการแจ้งเตือนใน root layout แทนด้วย `<Suspense>` ผ่าน `NotificationBellLoader` — shell แสดงทันที ส่วนกระดิ่งโหลดทีหลัง
+  - [src/components/notifications/notification-bell-loader.tsx](src/components/notifications/notification-bell-loader.tsx): async server component ดึง notifications/unread พร้อม skeleton fallback
+  - [src/components/layout/app-shell.tsx](src/components/layout/app-shell.tsx): รับ prop `bell` เป็น React node แทนการรับข้อมูลสำเร็จรูป
+  - [src/components/layout/sidebar-nav.tsx](src/components/layout/sidebar-nav.tsx): เพิ่ม `prefetch` ให้ Link ทุกเมนูใน sidebar เพื่อให้ Next.js โหลด route ล่วงหน้า กดแล้วเปลี่ยนหน้าทันที
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
+### 2026-06-23 — แก้/ป้องกันอาการกด sidebar/หน้าเว็บไม่ได้บางครั้ง (service worker migration)
+- **ปัญหา**: ผู้ใช้รายงานว่าบางครั้งกดเปลี่ยนหน้าใน sidebar ไม่ได้ หรือกดอะไรในหน้าไม่ได้เลย อาการคล้ายบัค service worker ที่เคยแก้ไว้ (SW เก่ายัง control หน้าอยู่ / RSC fetch ถูกยุ่ง)
+- **แก้ไข**:
+  - [public/sw.js](public/sw.js): bump `sw-version` → 5 และเพิ่ม bail สำหรับ React Server Component fetches (`RSC: 1` หรือ `Accept: text/x-component`) ให้ SW ไม่ยุ่งกับ soft navigation ของ Next.js
+  - [src/components/pwa/service-worker-register.tsx](src/components/pwa/service-worker-register.tsx): ฟัง `controllerchange` ถ้า SW เปลี่ยน controller กลางเซสชันให้ reload หนึ่งครั้ง (sessionStorage กัน loop) เพื่อขับไล่ SW เก่าที่ยัง control หน้าอยู่
+- **ขั้นตอนผู้ใช้**: ถ้ายังเจออาการ ให้ **Unregister Service Worker** ใน DevTools → Application → Service Workers → แล้วกด Reload (หรือบนมือถือปิดแท็บ/แอปแล้วเข้าใหม่) เพื่อให้ SW v5 ควบคุมหน้าตั้งแต่ต้น
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
 ### 2026-06-22 — ปรับกระดิ่งแจ้งเตือน navbar แสดง 10 รายการ + ลิงก์ไปประวัติ
 - **เหตุผล/คำสั่งผู้ใช้**: กระดิ่ง navbar ควร fetch แค่ 10 การแจ้งเตือนล่าสุด และมีปุ่ม "ดูเพิ่มเติม" เพื่อไปหน้าประวัติการแจ้งเตือน
 - **แก้ไข**:

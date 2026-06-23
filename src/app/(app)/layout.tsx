@@ -1,11 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
 import { PushManager } from "@/components/pwa/push-manager";
-import {
-  getNotifications,
-  getUnreadCount,
-} from "@/server/services/notification.service";
-import type { ClientNotification } from "@/lib/types";
+import { NotificationBellLoader } from "@/components/notifications/notification-bell-loader";
 
 export default async function AppLayout({
   children,
@@ -13,27 +9,12 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const [rows, unread] = await Promise.all([
-    getNotifications(user.id, { take: 10 }),
-    getUnreadCount(user.id),
-  ]);
-
-  const notifications: ClientNotification[] = rows.map((n) => ({
-    id: n.id,
-    type: n.type,
-    title: n.title,
-    message: n.message,
-    linkUrl: n.linkUrl,
-    isRead: n.isRead,
-    createdAt: n.createdAt.toISOString(),
-  }));
 
   return (
     <AppShell
       role={user.role}
       user={{ name: user.name, email: user.email, avatarUrl: user.image }}
-      notifications={notifications}
-      unread={unread}
+      bell={<NotificationBellLoader role={user.role} userId={user.id} />}
     >
       <PushManager />
       {children}

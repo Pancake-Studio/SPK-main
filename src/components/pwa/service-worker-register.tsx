@@ -34,7 +34,22 @@ export function ServiceWorkerRegister() {
     if (document.readyState === "complete") onLoad();
     else window.addEventListener("load", onLoad, { once: true });
 
-    return () => window.removeEventListener("load", onLoad);
+    // If a service worker takes control of this page mid-session (e.g. an old
+    // SW with clients.claim() activating), reload once so the new controller
+    // boots cleanly from the start of navigation. Guarded with sessionStorage to
+    // avoid reload loops.
+    const onControllerChange = () => {
+      if (sessionStorage.getItem("spk-sw-reloaded")) return;
+      sessionStorage.setItem("spk-sw-reloaded", "1");
+      console.log("[sw] controller changed — reloading once to migrate");
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
+    return () => {
+      window.removeEventListener("load", onLoad);
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
   }, []);
 
   return null;

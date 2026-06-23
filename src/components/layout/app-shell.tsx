@@ -8,17 +8,14 @@ import { Logo } from "./logo";
 import { SidebarNav } from "./sidebar-nav";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
-import { NotificationBell } from "@/components/notifications/notification-bell";
 import { Button } from "@/components/ui/button";
 import { roleLabel } from "@/lib/role";
 import { navForRole } from "@/lib/nav";
-import type { ClientNotification } from "@/lib/types";
 
 type AppShellProps = {
   role: string;
   user: { name: string; email: string; avatarUrl?: string | null };
-  notifications: ClientNotification[];
-  unread: number;
+  bell: React.ReactNode;
   children: React.ReactNode;
 };
 
@@ -43,7 +40,7 @@ function SidebarContent({ role, onNavigate }: { role: string; onNavigate?: () =>
   );
 }
 
-export function AppShell({ role, user, notifications, unread, children }: AppShellProps) {
+export function AppShell({ role, user, bell, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const pathname = usePathname();
 
@@ -106,7 +103,7 @@ export function AppShell({ role, user, notifications, unread, children }: AppShe
           </div>
           <div className="flex-1" />
           <ThemeToggle />
-          <NotificationBell role={role} initialItems={notifications} initialUnread={unread} />
+          {bell}
           <div className="ml-1">
             <UserMenu name={user.name} email={user.email} role={role} avatarUrl={user.avatarUrl} />
           </div>
