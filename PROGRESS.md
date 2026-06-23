@@ -145,6 +145,15 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 
 ## 6. Session Log (บันทึกทุกครั้งที่ทำงาน)
 
+### 2026-06-23 — ย้ายฐานข้อมูลจาก SQLite ไป PostgreSQL (Neon) + migrate ข้อมูลจริง
+- **โจทย์**: เปลี่ยน `DATABASE_URL` เป็น PostgreSQL บน Neon และย้ายข้อมูลทั้งหมดจาก `prisma/dev.db`
+- **Config**: อัปเดต `.env` ใช้ `DATABASE_URL` ของ Neon (pooled connection) · เปลี่ยน `provider` ใน `prisma/schema.prisma` จาก `sqlite` → `postgresql` · `npx prisma db push` สร้าง schema บน Neon สำเร็จ
+- **Migration script** ([scripts/migrate-sqlite-to-postgres.mjs](scripts/migrate-sqlite-to-postgres.mjs)): สร้าง temporary Prisma client สำหรับ SQLite (`prisma/schema.sqlite.prisma`) อ่านข้อมูลทุกตาราง แล้วเขียนลง PostgreSQL ตาม topological order พร้อม `skipDuplicates` · ล้างข้อมูล Postgres ก่อนเขียนใหม่
+- **ผล migration**: ย้าย **2,244 แถว** สำเร็จ · ตรวจ counts: users 411, students 378, teachers 32, classes 21, subjects 131, schedules 632, notifications 582
+- **Cleanup**: ลบ temporary schema sqlite + generated client + backup `.env` ออกแล้ว
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ✅ (38 routes) · Postgres query ผ่าน Prisma Client ใหม่ไม่ error
+- **หมายเหตุ**: dev server ต้อง restart เพื่อใช้ `DATABASE_URL` ใหม่; `prisma/dev.db` ยังอยู่เป็น backup ในเครื่อง
+
 ### 2026-06-23 — คาบกิจกรรมทับคาบเรียนในตาราง (activity มี priority สูงสุด)
 - **โจทย์**: คาบกิจกรรมสำคัญที่สุด — ถ้ามีคาบกิจกรรมในช่อง (day, period) ที่ห้อง/ครูมีคาบเรียนอยู่ ตารางเรียน/ตารางสอนต้องแสดงเป็นคาบกิจกรรมแทน; ลบคาบกิจกรรมออกแล้วคาบเรียนเดิมกลับมาแสดงอัตโนมัติ
 - **แก้ไข** ([activity.service.ts](src/server/services/activity.service.ts) `withActivities`): เปลี่ยนจาก overlay เติมช่องว่าง → **override ช่องที่ชน** โดยกรองคาบเรียนปกติที่ `(day, period)` ตรงกับกิจกรรมออก แล้วใส่ activity slot เข้าไปแทน · ลบกิจกรรม = ข้อมูลเดิมกลับมาเอง (read-time overlay, ไม่แตะ `Schedule`)
