@@ -65,13 +65,28 @@ export async function notifyUsers(
 
 export async function getNotifications(
   userId: string,
-  opts: { unreadOnly?: boolean; take?: number } = {},
+  opts: { unreadOnly?: boolean; take?: number; skip?: number } = {},
 ) {
   return db.notification.findMany({
     where: { userId, ...(opts.unreadOnly ? { isRead: false } : {}) },
     orderBy: { createdAt: "desc" },
     take: opts.take ?? 30,
+    skip: opts.skip ?? 0,
   });
+}
+
+/** A page of notifications plus whether more remain — for infinite scroll.
+ *  We over-fetch by one row to detect `hasMore` without a second count query. */
+export async function getNotificationsPage(
+  userId: string,
+  opts: { skip: number; take: number },
+) {
+  const rows = await getNotifications(userId, {
+    skip: opts.skip,
+    take: opts.take + 1,
+  });
+  const hasMore = rows.length > opts.take;
+  return { rows: hasMore ? rows.slice(0, opts.take) : rows, hasMore };
 }
 
 export function getUnreadCount(userId: string) {

@@ -19,6 +19,8 @@ import {
 import { DeleteButton } from "@/components/admin/delete-button";
 import { deleteSubjectAction, deleteSubjectsAction } from "@/server/actions/admin.actions";
 import { EditSubjectDialog } from "@/components/admin/edit-subject-dialog";
+import { SearchBox } from "@/components/ui/search-box";
+import { matchesQuery } from "@/lib/utils";
 
 export type SubjectRow = {
   id: string;
@@ -32,6 +34,9 @@ export function SubjectTable({ subjects }: { subjects: SubjectRow[] }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const [q, setQ] = React.useState("");
+
+  const shown = subjects.filter((s) => matchesQuery([s.subjectName, s.subjectCode], q));
 
   const allSelected = subjects.length > 0 && selected.size === subjects.length;
   const someSelected = selected.size > 0 && !allSelected;
@@ -67,6 +72,8 @@ export function SubjectTable({ subjects }: { subjects: SubjectRow[] }) {
 
   return (
     <div className="space-y-3">
+      <SearchBox value={q} onChange={setQ} placeholder="ค้นหาวิชา (ชื่อ/รหัส)" />
+
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-secondary/40 px-4 py-2.5">
           <span className="text-sm font-medium text-foreground">เลือกแล้ว {selected.size} รายการ</span>
@@ -101,7 +108,7 @@ export function SubjectTable({ subjects }: { subjects: SubjectRow[] }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {subjects.map((subject) => (
+            {shown.map((subject) => (
               <TableRow key={subject.id} data-state={selected.has(subject.id) ? "selected" : undefined}>
                 <TableCell>
                   <Checkbox

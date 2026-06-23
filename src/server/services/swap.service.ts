@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { createNotification, notifyUsers } from "./notification.service";
 import { SWAP_STATUS, NOTIFICATION_TYPES, ROLES } from "@/lib/constants";
 import { periodMeta, dayMeta } from "@/lib/timetable";
+import { weekStartOf, weekRangeLabel, toIsoDate } from "@/lib/day-swap";
 
 /** Minimal identity passed from the action layer (already authenticated). */
 type Actor = { userId: string; role: string; teacherId?: string | null };
@@ -35,16 +36,24 @@ async function classStudentUserIds(classId: string) {
   return students.map((s) => s.userId);
 }
 
-type SlotPos = { id: string; day: string; period: number };
-type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
-
-/** Exchange two same-class rows' (day, period). Parks the first row at a temp
- *  day so the unique (classId, day, period) constraint can't trip mid-swap. The
- *  whole session (teacher/subject/room/class) travels with its own row. */
-async function exchangeDayPeriod(tx: Tx, a: SlotPos, b: SlotPos) {
-  await tx.schedule.update({ where: { id: a.id }, data: { day: `__SWAP_${a.id.slice(0, 8)}` } });
-  await tx.schedule.update({ where: { id: b.id }, data: { day: a.day, period: a.period } });
-  await tx.schedule.update({ where: { id: a.id }, data: { day: b.day, period: b.period } });
+/** Is `teacherId` already teaching something at (day, period) in the base
+ *  timetable (ignoring `exceptScheduleId`)? Used for the both-free check (#3). */
+async function teacherBusyAt(
+  teacherId: string,
+  day: string,
+  period: number,
+  exceptScheduleId?: string,
+): Promise<boolean> {
+  const row = await db.schedule.findFirst({
+    where: {
+      teacherId,
+      day,
+      period,
+      ...(exceptScheduleId ? { id: { not: exceptScheduleId } } : {}),
+    },
+    select: { id: true },
+  });
+  return Boolean(row);
 }
 
 /* ------------------------------------------------------------------ */
@@ -55,8 +64,16 @@ export async function createSwapRequest(input: {
   requesterTeacherId: string;
   sourceScheduleId: string;
   targetScheduleId: string;
+  /** A date (YYYY-MM-DD) inside the week the swap should apply to. */
+  weekDate: string;
   reason?: string;
 }) {
+  const weekStart = weekStartOf(input.weekDate);
+  // The swap is temporary (one week) — don't allow scheduling it for a past week.
+  if (weekStart < weekStartOf(toIsoDate(new Date()))) {
+    throw new SwapError("เลือกได้เฉพาะสัปดาห์ปัจจุบันหรือสัปดาห์ถัดไป");
+  }
+
   const [source, target] = await Promise.all([
     db.schedule.findUnique({
       where: { id: input.sourceScheduleId },
@@ -84,16 +101,21 @@ export async function createSwapRequest(input: {
     );
   }
 
-  // Block duplicate pending requests for the same pair.
+  // Both-free rule (#3): after the swap the requester teaches at the target's
+  // time and the target teacher teaches at the requester's time — each must be
+  // free at the other's slot, else they'd be double-booked.
+  await assertSwapTeachersFree(source, target);
+
+  // Block duplicate pending/active requests for the same pair in the same week.
   const existing = await db.swapRequest.findFirst({
     where: {
-      requesterId: input.requesterTeacherId,
       sourceScheduleId: input.sourceScheduleId,
       targetScheduleId: input.targetScheduleId,
-      status: SWAP_STATUS.PENDING,
+      weekStart,
+      status: { in: [SWAP_STATUS.PENDING, SWAP_STATUS.APPROVED, SWAP_STATUS.CANCEL_REQUESTED] },
     },
   });
-  if (existing) throw new SwapError("มีคำขอแลกคาบนี้ที่รออนุมัติอยู่แล้ว");
+  if (existing) throw new SwapError("มีคำขอแลกคาบนี้ในสัปดาห์นี้อยู่แล้ว");
 
   const swap = await db.swapRequest.create({
     data: {
@@ -101,13 +123,14 @@ export async function createSwapRequest(input: {
       targetTeacherId: target.teacherId,
       sourceScheduleId: input.sourceScheduleId,
       targetScheduleId: input.targetScheduleId,
+      weekStart,
       reason: input.reason?.trim() || null,
       status: SWAP_STATUS.PENDING,
       logs: {
         create: {
           action: "CREATED",
           actorId: null,
-          beforeJson: JSON.stringify({ source, target }),
+          beforeJson: JSON.stringify({ source, target, weekStart }),
         },
       },
     },
@@ -118,11 +141,34 @@ export async function createSwapRequest(input: {
     userId: target.teacher.user.id,
     type: NOTIFICATION_TYPES.SWAP_REQUEST,
     title: "คำขอแลกคาบสอนใหม่",
-    message: `${swap.requester.user.name} ขอแลก ${slotLabel(source)} กับ ${slotLabel(target)} ของคุณ`,
+    message: `${swap.requester.user.name} ขอแลก ${slotLabel(source)} กับ ${slotLabel(target)} ของคุณ — เฉพาะสัปดาห์ ${weekRangeLabel(weekStart)}`,
     linkUrl: "/teacher/swaps",
   });
 
   return swap;
+}
+
+/** Throws unless both teachers are free at each other's target slot. */
+async function assertSwapTeachersFree(
+  source: { teacherId: string; day: string; period: number; id: string },
+  target: { teacherId: string; day: string; period: number; id: string },
+) {
+  const [requesterBusy, targetBusy] = await Promise.all([
+    // Requester (teaches source) would move to the target's time.
+    teacherBusyAt(source.teacherId, target.day, target.period, target.id),
+    // Target teacher (teaches target) would move to the source's time.
+    teacherBusyAt(target.teacherId, source.day, source.period, source.id),
+  ]);
+  if (requesterBusy) {
+    throw new SwapError(
+      `คุณมีคาบสอนอยู่แล้วใน ${dayMeta(target.day)?.labelTh ?? target.day} คาบ ${target.period} จึงแลกคาบนี้ไม่ได้`,
+    );
+  }
+  if (targetBusy) {
+    throw new SwapError(
+      `ครูปลายทางมีคาบสอนอยู่แล้วใน ${dayMeta(source.day)?.labelTh ?? source.day} คาบ ${source.period} จึงแลกคาบนี้ไม่ได้`,
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -157,24 +203,16 @@ export async function approveSwapRequest(swapRequestId: string, actor: Actor) {
 
   const src = swap.sourceSchedule;
   const tgt = swap.targetSchedule;
-  // Whole-session swap (#3/#6/#7): exchange the two rows' (day, period). Every
-  // other field (teacher, subject, subjectCode, room, classId) travels with its
-  // own row automatically — nothing is copied, so nothing can go stale/empty.
-  const before = {
-    source: { id: src.id, day: src.day, period: src.period },
-    target: { id: tgt.id, day: tgt.day, period: tgt.period },
-  };
-  const after = {
-    source: { id: src.id, day: tgt.day, period: tgt.period },
-    target: { id: tgt.id, day: src.day, period: src.period },
-  };
+
+  // Non-destructive (#5): we never touch the base Schedule. Approving just flips
+  // the status to APPROVED — the swap is then applied as a read-time overlay for
+  // its `weekStart` week only (see effective-schedule.service). Re-check the
+  // both-free rule (#3) in case the base timetable changed since the request.
+  await assertSwapTeachersFree(src, tgt);
+
+  const weekLabel = swap.weekStart ? weekRangeLabel(swap.weekStart) : "สัปดาห์นี้";
 
   await db.$transaction(async (tx) => {
-    await exchangeDayPeriod(
-      tx,
-      { id: src.id, day: src.day, period: src.period },
-      { id: tgt.id, day: tgt.day, period: tgt.period },
-    );
     await tx.swapRequest.update({
       where: { id: swap.id },
       data: {
@@ -188,8 +226,11 @@ export async function approveSwapRequest(swapRequestId: string, actor: Actor) {
         swapRequestId: swap.id,
         action: "APPROVED",
         actorId: actor.userId,
-        beforeJson: JSON.stringify(before),
-        afterJson: JSON.stringify(after),
+        afterJson: JSON.stringify({
+          weekStart: swap.weekStart,
+          source: { id: src.id, day: src.day, period: src.period },
+          target: { id: tgt.id, day: tgt.day, period: tgt.period },
+        }),
       },
     });
     await tx.auditLog.create({
@@ -207,7 +248,7 @@ export async function approveSwapRequest(swapRequestId: string, actor: Actor) {
     userId: swap.requester.user.id,
     type: NOTIFICATION_TYPES.SWAP_APPROVED,
     title: "คำขอแลกคาบได้รับการอนุมัติ",
-    message: `${swap.targetTeacher.user.name} อนุมัติการสลับ ${slotLabel(src)} กับ ${slotLabel(tgt)}`,
+    message: `${swap.targetTeacher.user.name} อนุมัติการสลับ ${slotLabel(src)} กับ ${slotLabel(tgt)} — เฉพาะสัปดาห์ ${weekLabel}`,
     linkUrl: "/teacher/swaps",
   });
 
@@ -375,18 +416,10 @@ export async function approveSwapCancellation(swapRequestId: string, actor: Acto
 
   const src = swap.sourceSchedule;
   const tgt = swap.targetSchedule;
-  const before = {
-    source: { id: src.id, day: src.day, period: src.period },
-    target: { id: tgt.id, day: tgt.day, period: tgt.period },
-  };
 
   await db.$transaction(async (tx) => {
-    // Exchange the rows' (day, period) again — restores the original timetable.
-    await exchangeDayPeriod(
-      tx,
-      { id: src.id, day: src.day, period: src.period },
-      { id: tgt.id, day: tgt.day, period: tgt.period },
-    );
+    // Non-destructive: flipping to REVERTED simply stops the overlay applying —
+    // the base timetable was never changed, so it is already the original.
     await tx.swapRequest.update({
       where: { id: swap.id },
       data: {
@@ -400,10 +433,9 @@ export async function approveSwapCancellation(swapRequestId: string, actor: Acto
         swapRequestId: swap.id,
         action: "CANCEL_APPROVED",
         actorId: actor.userId,
-        beforeJson: JSON.stringify(before),
         afterJson: JSON.stringify({
-          source: { id: src.id, day: tgt.day, period: tgt.period },
-          target: { id: tgt.id, day: src.day, period: src.period },
+          source: { id: src.id, day: src.day, period: src.period },
+          target: { id: tgt.id, day: tgt.day, period: tgt.period },
         }),
       },
     });
@@ -506,66 +538,6 @@ export async function getSwapsForTeacher(teacherId: string) {
   return { incoming, outgoing };
 }
 
-export function getPendingIncomingCount(teacherId: string) {
-  return db.swapRequest.count({
-    where: { targetTeacherId: teacherId, status: SWAP_STATUS.PENDING },
-  });
-}
-
-/** Marks a schedule slot as recently swapped, for timetable highlighting (#7/#9).
- *  Since a whole session moves time slots, we record where it sat BEFORE. */
-export type SwapMark = {
-  scheduleId: string;
-  originalDay: string;
-  originalPeriod: number;
-  swappedAt: string;
-};
-
-/** Build a `scheduleId -> SwapMark` map for the given slots, from APPROVED swaps.
- *  After an approved swap each row sits at its partner's old (day, period), so a
- *  row's ORIGINAL position equals its partner row's CURRENT position. Most-recent
- *  swap wins if a slot was swapped more than once. */
-export async function getSwapMarks(
-  scheduleIds: string[],
-): Promise<Record<string, SwapMark>> {
-  if (scheduleIds.length === 0) return {};
-  const swaps = await db.swapRequest.findMany({
-    where: {
-      // Highlight while the swap is in effect (APPROVED, or cancellation pending).
-      // A REVERTED swap is back to the original schedule → no highlight.
-      status: { in: [SWAP_STATUS.APPROVED, SWAP_STATUS.CANCEL_REQUESTED] },
-      OR: [
-        { sourceScheduleId: { in: scheduleIds } },
-        { targetScheduleId: { in: scheduleIds } },
-      ],
-    },
-    include: swapInclude,
-    orderBy: { respondedAt: "asc" }, // ascending so later writes overwrite earlier
-  });
-
-  const marks: Record<string, SwapMark> = {};
-  for (const s of swaps) {
-    const when = (s.respondedAt ?? s.createdAt).toISOString();
-    if (scheduleIds.includes(s.sourceScheduleId)) {
-      marks[s.sourceScheduleId] = {
-        scheduleId: s.sourceScheduleId,
-        originalDay: s.targetSchedule.day,
-        originalPeriod: s.targetSchedule.period,
-        swappedAt: when,
-      };
-    }
-    if (scheduleIds.includes(s.targetScheduleId)) {
-      marks[s.targetScheduleId] = {
-        scheduleId: s.targetScheduleId,
-        originalDay: s.sourceSchedule.day,
-        originalPeriod: s.sourceSchedule.period,
-        swappedAt: when,
-      };
-    }
-  }
-  return marks;
-}
-
 export function getAllSwaps() {
   return db.swapRequest.findMany({
     include: swapInclude,
@@ -579,6 +551,7 @@ export function mapSwapToClient(swap: {
   id: string;
   status: string;
   reason: string | null;
+  weekStart: string | null;
   createdAt: Date;
   requesterId: string;
   targetTeacherId: string;
@@ -592,6 +565,7 @@ export function mapSwapToClient(swap: {
     id: swap.id,
     status: swap.status,
     reason: swap.reason,
+    weekLabel: swap.weekStart ? weekRangeLabel(swap.weekStart) : null,
     createdAt: swap.createdAt.toISOString(),
     requesterId: swap.requesterId,
     targetTeacherId: swap.targetTeacherId,

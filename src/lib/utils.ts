@@ -6,15 +6,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format a Date as a short, locale-aware time, e.g. "08:30". */
-export function formatTime(date: Date | string, locale = "th-TH") {
-  return new Intl.DateTimeFormat(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(date));
-}
-
 /** Relative "time ago" label for notifications, e.g. "3 นาทีที่แล้ว". */
 export function timeAgo(date: Date | string, locale = "th-TH") {
   const d = new Date(date);
@@ -43,10 +34,16 @@ export function getInitials(name: string) {
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-/** Title-case helper for labels derived from enum-ish strings. */
-export function titleCase(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+/** True if every whitespace-separated term in `query` appears (case-insensitive)
+ *  somewhere in `parts`. Empty query matches everything. For client-side table
+ *  search over a few known fields. */
+export function matchesQuery(
+  parts: (string | number | null | undefined)[],
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = parts.filter((p) => p != null).join(" ").toLowerCase();
+  return q.split(/\s+/).every((term) => hay.includes(term));
 }
+

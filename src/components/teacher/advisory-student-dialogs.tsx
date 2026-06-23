@@ -1,0 +1,87 @@
+"use client";
+
+import { EntityFormDialog } from "@/components/admin/entity-form-dialog";
+import { FormField } from "@/components/admin/form-field";
+import { ReadOnlyField } from "@/components/admin/readonly-field";
+import { Button } from "@/components/ui/button";
+import { Pencil } from "lucide-react";
+import {
+  createAdvisoryStudentAction,
+  updateAdvisoryStudentAction,
+} from "@/server/actions/teacher-self.actions";
+
+export type AdvisoryStudentRow = {
+  id: string;
+  title: string | null;
+  name: string;
+  email: string;
+  studentCode: string;
+  rollNumber: number | null;
+};
+
+export function AddAdvisoryStudentDialog({ className }: { className: string }) {
+  return (
+    <EntityFormDialog
+      title="เพิ่มนักเรียน"
+      description={`เพิ่มนักเรียนเข้าห้อง ${className} (ห้องที่คุณเป็นที่ปรึกษา)`}
+      triggerLabel="เพิ่มนักเรียน"
+      action={createAdvisoryStudentAction}
+    >
+      {({ fieldErrors }) => (
+        <>
+          <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <FormField name="title" label="คำนำหน้า" placeholder="เด็กชาย / นางสาว" error={fieldErrors?.title} />
+            <FormField name="name" label="ชื่อ-นามสกุล" required error={fieldErrors?.name} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField name="email" label="อีเมล" type="email" required error={fieldErrors?.email} />
+            <FormField name="studentCode" label="รหัสนักเรียน" required error={fieldErrors?.studentCode} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField name="rollNumber" label="เลขที่ (ห้ามซ้ำในห้อง)" type="number" placeholder="เช่น 1" error={fieldErrors?.rollNumber} />
+            <FormField name="password" label="รหัสผ่าน (ไม่บังคับ)" type="password" error={fieldErrors?.password} />
+          </div>
+        </>
+      )}
+    </EntityFormDialog>
+  );
+}
+
+export function EditAdvisoryStudentDialog({ student }: { student: AdvisoryStudentRow }) {
+  return (
+    <EntityFormDialog
+      title="แก้ไขข้อมูลนักเรียน"
+      action={updateAdvisoryStudentAction}
+      trigger={
+        <Button variant="ghost" size="icon-sm">
+          <Pencil />
+        </Button>
+      }
+      submitLabel="บันทึก"
+    >
+      {({ fieldErrors }) => (
+        <>
+          <input type="hidden" name="id" value={student.id} />
+          <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <FormField name="title" label="คำนำหน้า" defaultValue={student.title ?? ""} error={fieldErrors?.title} />
+            <FormField name="name" label="ชื่อ-นามสกุล" required defaultValue={student.name} error={fieldErrors?.name} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField name="email" label="อีเมล" type="email" required defaultValue={student.email} error={fieldErrors?.email} />
+            <ReadOnlyField name="studentCode" label="รหัสนักเรียน" value={student.studentCode} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              name="rollNumber"
+              label="เลขที่ (ห้ามซ้ำในห้อง)"
+              type="number"
+              defaultValue={student.rollNumber != null ? String(student.rollNumber) : ""}
+              error={fieldErrors?.rollNumber}
+            />
+            <FormField name="password" label="รหัสผ่าน (เว้นว่างเพื่อเก็บเหมือนเดิม)" type="password" error={fieldErrors?.password} />
+          </div>
+        </>
+      )}
+    </EntityFormDialog>
+  );
+}

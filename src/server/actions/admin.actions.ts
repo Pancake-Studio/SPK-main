@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import {
   teacherSchema,
@@ -49,10 +48,9 @@ import {
   syncClasses,
   syncSubjects,
   syncSchedules,
+  createAnnouncement,
   type SyncResult,
 } from "@/server/services/admin.service";
-import { notifyUsers } from "@/server/services/notification.service";
-import { NOTIFICATION_TYPES, ROLES } from "@/lib/constants";
 import {
   fieldErrorsFromZod,
   fail,
@@ -66,6 +64,11 @@ function uniqueMessage(e: unknown, label: string): string | null {
     return `${label} นี้ถูกใช้งานแล้ว`;
   }
   return null;
+}
+
+/** Surface the friendly "ห้องนี้มีครูที่ปรึกษาแล้ว" guard message. */
+function advisorMessage(e: unknown): string | null {
+  return e instanceof Error && e.message.includes("ที่ปรึกษา") ? e.message : null;
 }
 
 /** Student-specific: surface the friendly "เลขที่ซ้ำ" message, plus the
@@ -92,7 +95,7 @@ export async function createTeacherAction(
   try {
     await createTeacher(parsed.data);
   } catch (e) {
-    return fail(uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถเพิ่มครูได้");
+    return fail(advisorMessage(e) ?? uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถเพิ่มครูได้");
   }
   revalidatePath("/admin/teachers");
   return ok("เพิ่มครูเรียบร้อยแล้ว");
@@ -115,7 +118,7 @@ export async function updateTeacherAction(
   try {
     await updateTeacher(parsed.data);
   } catch (e) {
-    return fail(uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถแก้ไขครูได้");
+    return fail(advisorMessage(e) ?? uniqueMessage(e, "อีเมล/รหัสครู") ?? "ไม่สามารถแก้ไขครูได้");
   }
   revalidatePath("/admin/teachers");
   return ok("แก้ไขครูเรียบร้อยแล้ว");
@@ -496,35 +499,7 @@ export async function createAnnouncementAction(
   });
   if (!parsed.success) return fail("ตรวจสอบข้อมูล", fieldErrorsFromZod(parsed.error));
 
-  const announcement = await db.announcement.create({
-    data: { ...parsed.data, authorId: admin.id },
-  });
-
-  const plainBody = parsed.data.body
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const where =
-    parsed.data.audience === "TEACHERS"
-      ? { role: ROLES.TEACHER }
-      : parsed.data.audience === "STUDENTS"
-        ? { role: ROLES.STUDENT }
-        : {};
-  const recipients = await db.user.findMany({ where, select: { id: true } });
-  await notifyUsers(
-    recipients.map((u) => u.id),
-    {
-      type: parsed.data.isUrgent
-        ? NOTIFICATION_TYPES.EMERGENCY
-        : NOTIFICATION_TYPES.ANNOUNCEMENT,
-      title: parsed.data.isUrgent ? `⚠ ด่วน: ${parsed.data.title}` : parsed.data.title,
-      message: plainBody.slice(0, 240),
-      linkUrl: `/announcements/${announcement.id}`,
-    },
-  );
-
+  const count = await createAnnouncement(admin.id, parsed.data);
   revalidatePath("/admin/announcements");
-  return ok(`ประกาศแล้ว แจ้งเตือน ${recipients.length} คน`);
+  return ok(`ประกาศแล้ว แจ้งเตือน ${count} คน`);
 }

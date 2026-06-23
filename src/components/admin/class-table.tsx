@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { DeleteButton } from "@/components/admin/delete-button";
 import { deleteClassAction, deleteClassesAction } from "@/server/actions/admin.actions";
 import { EditClassDialog } from "@/components/admin/edit-class-dialog";
+import { SearchBox } from "@/components/ui/search-box";
+import { matchesQuery } from "@/lib/utils";
 
 export type ClassRow = {
   id: string;
@@ -34,6 +36,9 @@ export function ClassTable({ classes }: { classes: ClassRow[] }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const [q, setQ] = React.useState("");
+
+  const shown = classes.filter((c) => matchesQuery([c.className, c.gradeLevel, c.room], q));
 
   const allSelected = classes.length > 0 && selected.size === classes.length;
   const someSelected = selected.size > 0 && !allSelected;
@@ -69,6 +74,8 @@ export function ClassTable({ classes }: { classes: ClassRow[] }) {
 
   return (
     <div className="space-y-3">
+      <SearchBox value={q} onChange={setQ} placeholder="ค้นหาห้อง (ชื่อ/ระดับชั้น/อาคาร)" />
+
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-secondary/40 px-4 py-2.5">
           <span className="text-sm font-medium text-foreground">เลือกแล้ว {selected.size} รายการ</span>
@@ -104,7 +111,7 @@ export function ClassTable({ classes }: { classes: ClassRow[] }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {classes.map((cls) => (
+            {shown.map((cls) => (
               <TableRow key={cls.id} data-state={selected.has(cls.id) ? "selected" : undefined}>
                 <TableCell>
                   <Checkbox

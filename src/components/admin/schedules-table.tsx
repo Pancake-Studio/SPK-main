@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/table";
 import { EditScheduleDialog } from "@/components/admin/edit-schedule-dialog";
 import { DEFAULT_BELL_SLOTS, type BellSlotData } from "@/lib/bell-schedule";
+import { SearchBox } from "@/components/ui/search-box";
+import { matchesQuery } from "@/lib/utils";
 
 export type ScheduleRow = {
   id: string;
@@ -57,6 +59,11 @@ export function SchedulesTable({
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const [q, setQ] = React.useState("");
+
+  const shown = rows.filter((r) =>
+    matchesQuery([r.className, r.dayLabel, r.period, r.subjectName, r.teacherName, r.room], q),
+  );
 
   const allSelected = rows.length > 0 && selected.size === rows.length;
   const someSelected = selected.size > 0 && !allSelected;
@@ -110,6 +117,8 @@ export function SchedulesTable({
 
   return (
     <div className="space-y-3">
+      <SearchBox value={q} onChange={setQ} placeholder="ค้นหา (ห้อง/วัน/วิชา/ครู)" />
+
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-secondary/40 px-4 py-2.5">
           <span className="text-sm font-medium text-foreground">
@@ -153,7 +162,7 @@ export function SchedulesTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
+            {shown.map((r) => (
               <TableRow key={r.id} data-state={selected.has(r.id) ? "selected" : undefined}>
                 <TableCell>
                   <Checkbox

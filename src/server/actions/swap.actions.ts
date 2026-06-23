@@ -30,6 +30,7 @@ export async function createSwapAction(
   const parsed = createSwapSchema.safeParse({
     sourceScheduleId: formData.get("sourceScheduleId"),
     targetScheduleId: formData.get("targetScheduleId"),
+    weekDate: formData.get("weekDate"),
     reason: formData.get("reason") || undefined,
   });
   if (!parsed.success) {
@@ -41,6 +42,7 @@ export async function createSwapAction(
       requesterTeacherId: teacher.id,
       sourceScheduleId: parsed.data.sourceScheduleId,
       targetScheduleId: parsed.data.targetScheduleId,
+      weekDate: parsed.data.weekDate,
       reason: parsed.data.reason,
     });
   } catch (e) {

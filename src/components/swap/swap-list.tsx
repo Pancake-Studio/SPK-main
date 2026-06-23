@@ -188,6 +188,9 @@ export function SwapList({
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={s.status} />
+                  {s.weekLabel && (
+                    <Badge variant="muted">เฉพาะสัปดาห์ {s.weekLabel}</Badge>
+                  )}
                   <TimeAgo date={s.createdAt} className="text-xs text-muted-foreground" />
                 </div>
                 <p className="text-sm text-muted-foreground">

@@ -127,13 +127,6 @@ export default async function LoginPage({
 
             <LoginForm />
 
-            <div className="mt-6 rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-              <p className="mb-1 font-medium text-foreground">บัญชีทดลอง (Demo)</p>
-              <p>ผู้ดูแล: admin@spk.ac.th / admin123</p>
-              <p>ครู: somchai@spk.ac.th / password123</p>
-              <p>นักเรียน: s0001@spk.ac.th / password123</p>
-            </div>
-
             <p className="mt-6 text-center text-xs text-muted-foreground">
               <Link href="/" className="hover:text-foreground hover:underline">
                 ← กลับสู่หน้าหลัก

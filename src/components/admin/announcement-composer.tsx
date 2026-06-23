@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { SelectField } from "@/components/admin/select-field";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { createAnnouncementAction } from "@/server/actions/admin.actions";
-import { initialActionState } from "@/server/actions/_helpers";
+import { initialActionState, type ActionState } from "@/server/actions/_helpers";
 
 const audienceOptions = [
   { value: "ALL", label: "ทุกคน" },
@@ -21,12 +21,14 @@ const audienceOptions = [
   { value: "STUDENTS", label: "เฉพาะนักเรียน" },
 ];
 
-export function AnnouncementComposer() {
+/** Reusable announcement form. `action` lets admins and teachers share it. */
+export function AnnouncementComposer({
+  action = createAnnouncementAction,
+}: {
+  action?: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+}) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    createAnnouncementAction,
-    initialActionState,
-  );
+  const [state, formAction, pending] = useActionState(action, initialActionState);
   const formRef = React.useRef<HTMLFormElement>(null);
   const [editorKey, setEditorKey] = React.useState(0);
 

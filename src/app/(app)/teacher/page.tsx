@@ -1,4 +1,4 @@
-import { CalendarDays, Layers, Inbox, Send } from "lucide-react";
+import { Inbox, Send } from "lucide-react";
 import { requireTeacherProfile } from "@/lib/auth";
 import { getTeacherSchedule } from "@/server/services/schedule.service";
 import { getEffectiveSlots } from "@/server/services/bell-schedule.service";
@@ -14,7 +14,7 @@ import { NowNext } from "@/components/timetable/now-next";
 import { TodaySchedule } from "@/components/timetable/today-schedule";
 import { DaySwapBanner } from "@/components/timetable/day-swap-banner";
 import { SwapList } from "@/components/swap/swap-list";
-import { dayKeyForDate, currentPeriodNo, slotsForDay } from "@/lib/timetable";
+import { dayKeyForDate, currentPeriodNo } from "@/lib/timetable";
 import { effectiveDayFor, toIsoDate } from "@/lib/day-swap";
 import { SWAP_STATUS } from "@/lib/constants";
 
@@ -33,7 +33,6 @@ export default async function TeacherDashboard() {
   const lessonDay = effectiveDayFor(now, weekSwaps);
   const bellSlots = await getEffectiveSlots(todayIso);
   const curPeriod = currentPeriodNo(now, bellSlots);
-  const todayCount = lessonDay ? slotsForDay(slots, lessonDay).length : 0;
 
   const pendingIncoming = swaps.incoming.filter((s) => s.status === SWAP_STATUS.PENDING);
   const pendingOutgoing = swaps.outgoing.filter((s) => s.status === SWAP_STATUS.PENDING);
@@ -49,9 +48,7 @@ export default async function TeacherDashboard() {
 
       <DaySwapBanner swaps={weekSwaps} today={today} />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="คาบสอนวันนี้" value={todayCount} icon={CalendarDays} accent="primary" />
-        <StatCard label="คาบสอนต่อสัปดาห์" value={slots.length} icon={Layers} accent="info" />
+      <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           label="คำขอรออนุมัติ"
           value={pendingIncoming.length}

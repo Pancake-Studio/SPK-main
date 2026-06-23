@@ -11,7 +11,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { NotificationIcon } from "./notification-icon";
 import { TimeAgo } from "@/components/time-ago";
 import { cn } from "@/lib/utils";
@@ -22,9 +21,11 @@ import {
 } from "@/server/actions/notification.actions";
 
 export function NotificationBell({
+  role,
   initialItems,
   initialUnread,
 }: {
+  role: string;
   initialItems: ClientNotification[];
   initialUnread: number;
 }) {
@@ -39,7 +40,7 @@ export function NotificationBell({
     es.addEventListener("notification", (e) => {
       try {
         const data = JSON.parse((e as MessageEvent).data) as ClientNotification;
-        setItems((prev) => [{ ...data, isRead: false }, ...prev].slice(0, 30));
+        setItems((prev) => [{ ...data, isRead: false }, ...prev].slice(0, 10));
         setUnread((u) => u + 1);
         toast(data.title, { description: data.message });
         router.refresh();
@@ -96,14 +97,14 @@ export function NotificationBell({
             </button>
           )}
         </div>
-        <ScrollArea className="max-h-[380px]">
+        <div className="max-h-[380px] overflow-y-auto overscroll-contain">
           {items.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
               ยังไม่มีการแจ้งเตือน
             </p>
           ) : (
             <ul className="divide-y divide-border">
-              {items.map((n) => {
+              {items.slice(0, 10).map((n) => {
                 const body = (
                   <div className="flex gap-3 px-4 py-3">
                     <NotificationIcon type={n.type} />
@@ -141,7 +142,16 @@ export function NotificationBell({
               })}
             </ul>
           )}
-        </ScrollArea>
+        </div>
+        <div className="border-t border-border px-4 py-2.5">
+          <Link
+            href={`/${role.toLowerCase()}/notifications`}
+            onClick={() => setOpen(false)}
+            className="block text-center text-xs font-medium text-primary hover:underline"
+          >
+            ดูประวัติการแจ้งเตือน
+          </Link>
+        </div>
       </PopoverContent>
     </Popover>
   );

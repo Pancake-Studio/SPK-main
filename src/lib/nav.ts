@@ -8,6 +8,7 @@ export type NavItem = {
 
 export type NavIcon =
   | "dashboard"
+  | "admins"
   | "teachers"
   | "students"
   | "classes"
@@ -16,6 +17,7 @@ export type NavIcon =
   | "periods"
   | "tasks"
   | "swap"
+  | "delegate"
   | "announce"
   | "sync"
   | "settings"
@@ -32,14 +34,20 @@ export const NAV: Record<Role, NavItem[]> = {
     { label: "ตารางสอน", href: "/admin/schedule", icon: "schedule" },
     { label: "เวลาเรียน / คาบ", href: "/admin/periods", icon: "periods" },
     { label: "คำขอแลกคาบ", href: "/admin/swaps", icon: "swap" },
+    { label: "ผู้ดูแลระบบ", href: "/admin/admins", icon: "admins" },
     { label: "ประกาศ", href: "/admin/announcements", icon: "announce" },
     { label: "Sync Excel", href: "/admin/data-sync", icon: "sync" },
   ],
   [ROLES.TEACHER]: [
     { label: "ภาพรวม", href: "/teacher", icon: "dashboard" },
     { label: "ตารางสอนของฉัน", href: "/teacher/schedule", icon: "schedule" },
+    { label: "จัดตารางสอน", href: "/teacher/schedule/manage", icon: "periods" },
+    { label: "จัดการวิชา", href: "/teacher/subjects", icon: "subjects" },
+    { label: "นักเรียนในที่ปรึกษา", href: "/teacher/advisory", icon: "students" },
     { label: "มอบหมายงาน", href: "/teacher/assignments", icon: "tasks" },
+    { label: "ประกาศ", href: "/teacher/announcements", icon: "announce" },
     { label: "แลกคาบสอน", href: "/teacher/swaps", icon: "swap" },
+    { label: "ฝากคาบสอน", href: "/teacher/delegations", icon: "delegate" },
     { label: "การแจ้งเตือน", href: "/teacher/notifications", icon: "bell" },
   ],
   [ROLES.STUDENT]: [

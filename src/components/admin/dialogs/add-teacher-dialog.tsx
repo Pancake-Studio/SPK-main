@@ -2,9 +2,12 @@
 
 import { EntityFormDialog } from "../entity-form-dialog";
 import { FormField } from "../form-field";
+import { SelectField, type Option } from "../select-field";
 import { createTeacherAction } from "@/server/actions/admin.actions";
 
-export function AddTeacherDialog() {
+const NO_ADVISOR: Option = { value: "", label: "— ไม่เป็นครูที่ปรึกษา —" };
+
+export function AddTeacherDialog({ classes }: { classes: Option[] }) {
   return (
     <EntityFormDialog
       title="เพิ่มครู"
@@ -27,6 +30,15 @@ export function AddTeacherDialog() {
             <FormField name="phone" label="เบอร์โทร" error={fieldErrors?.phone} />
             <FormField name="password" label="รหัสผ่าน (ไม่บังคับ)" type="password" error={fieldErrors?.password} />
           </div>
+          <SelectField
+            name="advisorClassId"
+            label="ครูที่ปรึกษาประจำห้อง"
+            options={[NO_ADVISOR, ...classes]}
+            defaultValue=""
+            placeholder="— ไม่เป็นครูที่ปรึกษา —"
+            error={fieldErrors?.advisorClassId}
+            hint="ครูที่ปรึกษาแก้ไขข้อมูลนักเรียนเฉพาะห้องนี้ได้"
+          />
         </>
       )}
     </EntityFormDialog>

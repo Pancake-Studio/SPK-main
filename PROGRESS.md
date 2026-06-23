@@ -145,6 +145,96 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 
 ## 6. Session Log (บันทึกทุกครั้งที่ทำงาน)
 
+### 2026-06-23 — หน้าแจ้งเตือน: infinite scroll ทีละ 10 + กระดิ่ง navbar เลื่อนได้
+- **โหลดทีละ 10 (infinite scroll)**: หน้าประวัติแจ้งเตือนโหลดหน้าแรก 10 รายการฝั่ง server แล้วโหลดเพิ่มอัตโนมัติเมื่อเลื่อนถึงท้ายลิสต์ (IntersectionObserver, rootMargin 200px) มีปุ่ม "โหลดเพิ่ม" สำรอง + spinner "กำลังโหลด…"
+  - service: เพิ่ม `skip` ใน `getNotifications` + `getNotificationsPage()` (over-fetch +1 เพื่อรู้ `hasMore` โดยไม่ต้อง count ซ้ำ) ([notification.service.ts](src/server/services/notification.service.ts))
+  - action: `loadNotificationsAction(skip)` + ค่าคงที่ `NOTIFICATIONS_PAGE_SIZE = 10` ([notification.actions.ts](src/server/actions/notification.actions.ts))
+  - view ส่งหน้าแรก + `hasMore` เข้า feed ([notifications-view.tsx](src/components/notifications/notifications-view.tsx)); feed เขียนใหม่เป็น client infinite-scroll พร้อม de-dupe กัน id ซ้ำ + guard กันยิงซ้อน ([notification-feed.tsx](src/components/notifications/notification-feed.tsx))
+- **กระดิ่ง navbar เลื่อนได้จริง**: เปลี่ยนจาก Radix `ScrollArea` (ที่ `max-h` ไม่ค่อย constrain viewport) เป็น native `div.max-h-[380px] overflow-y-auto overscroll-contain` ([notification-bell.tsx](src/components/notifications/notification-bell.tsx))
+- **ตรวจสอบ**: `tsc` ✅ · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — ตอบสนองไวขึ้น (optimistic UI) + loading skeleton + landing สวย + ลบ demo/dead code
+- **Optimistic UI (แบบ Facebook)**: ติ๊กงาน/To-do ([student-todos.tsx](src/components/assignments/student-todos.tsx)) เด้งทันทีไม่รอ server — ยกสถานะ done ขึ้น parent เป็น override map, ติ๊กแล้วอัปเดต UI + progress bar ทันที แล้วยิง action เบื้องหลัง, ถ้า throw ค่อย rollback + toast (ปุ่มไม่ disable, มี active:scale-90) · หน้าแจ้งเตือน ([notification-feed.tsx](src/components/notifications/notification-feed.tsx)) เป็น optimistic อยู่แล้ว
+- **Loading skeleton**: เพิ่ม [(app)/loading.tsx](src/app/(app)/loading.tsx) — โครงหน้า (header + stat cards + ตาราง) เด้งทันทีทุกครั้งที่เปลี่ยนหน้าในระบบ ทำให้รู้สึกว่าเว็บตอบสนองตลอด
+- **Landing page ใหม่** ([page.tsx](src/app/page.tsx)): hero gradient + headline ไล่สี, การ์ดแยกตามบทบาท (ผู้ดูแล/ครู/นักเรียน), features 6 ช่อง (รวมฝากคาบ/มอบหมายงาน), CTA banner, ปุ่ม "ดูฟีเจอร์ทั้งหมด" (anchor)
+- **Login**: ลบกล่อง "บัญชีทดลอง (Demo)" ออก ([login/page.tsx](src/app/(auth)/login/page.tsx))
+- **ลบ dead code** (ยืนยัน 0 การอ้างอิงทั้ง src): `getTeacherDaySlots`, `getScheduleSlot` (schedule.service), `getPendingIncomingCount` (swap.service), `listStudents` (admin.service), `nextPeriodNo` + import `nextClassSlot` (timetable.ts), `titleCase`, `formatTime` (utils.ts)
+- **ตรวจสอบ**: `tsc` ✅ · `next build` ✅ · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — แก้ wizard แลกคาบ: ซ่อนครูที่ไม่มีคาบให้แลกได้จริง
+- **ปัญหา**: ขั้นเลือกครู (โหมดแลกคาบ) โชว์ครูที่สอนห้องนั้นทุกคน แม้คาบของครูในห้องนั้นตรงกับเวลาที่ผู้ขอติดสอนทุกคาบ → เลือกไปก็ไม่มีคาบให้แลก แต่ชื่อยังขึ้น
+- **แก้**: [swap-wizard.tsx](src/components/swap/swap-wizard.tsx) `eligibleTeachers` (โหมด swap) เพิ่มเงื่อนไขต้องมีคาบในห้องเดียวกัน **ที่ผู้ขอว่างในเวลานั้น** อย่างน้อย 1 คาบ (ใช้ `myBusy`) — ตรงกับ predicate ขั้นเลือกคาบ (step 3) และ validation ฝั่ง server (`assertSwapTeachersFree`) · โหมดฝากคาบไม่กระทบ (โชว์เฉพาะครูที่ว่างอยู่แล้ว ซึ่งฝากได้จริง)
+- **ตรวจสอบ**: `tsc` ✅ · ยืนยันลำดับประกาศ `myBusy` (บรรทัด 100) มาก่อน `eligibleTeachers` (110) · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — ครูทุกคนประกาศได้ + แก้บัค sidebar highlight ซ้อน 2 จุด
+- **ครูทุกคนสามารถประกาศได้**: แยก logic สร้างประกาศ (+ fan-out แจ้งเตือนตาม audience) เป็น service กลาง `createAnnouncement(authorId, input)` ([admin.service.ts](src/server/services/admin.service.ts)) ใช้ร่วมกันทั้งแอดมิน+ครู · เพิ่ม `createTeacherAnnouncementAction` (requireTeacher) · ทำ [AnnouncementComposer](src/components/admin/announcement-composer.tsx) ให้รับ prop `action` (reuse ได้) · หน้าใหม่ [/teacher/announcements](src/app/(app)/teacher/announcements/page.tsx) + เมนูครู "ประกาศ" · ครูเลือก audience ได้ (ทุกคน/ครู/นักเรียน)
+- **แก้บัค sidebar highlight 2 จุด**: เดิม logic ถือว่าเมนูที่ href เป็น prefix ของ path ก็ active → `/teacher/schedule` กับ `/teacher/schedule/manage` สว่างพร้อมกัน · แก้ [sidebar-nav.tsx](src/components/layout/sidebar-nav.tsx) ให้ active เฉพาะเมนูที่ href **ตรง/ยาวที่สุด** (most specific) อันเดียว
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (36 routes, +/teacher/announcements) ✅ · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — Search bar ทุกหน้าจัดการข้อมูล + ครูแก้ไขได้ทุกวิชา
+- **Search bar ทุกหน้าที่แก้ไขข้อมูลได้**: เพิ่ม [SearchBox](src/components/ui/search-box.tsx) (client) + helper `matchesQuery` ([utils.ts](src/lib/utils.ts), ค้นแบบหลายคำ AND, case-insensitive) — กรองในตารางทันทีฝั่ง client · ใส่ใน: แอดมิน ครู/วิชา/ห้อง/ตารางสอน/ผู้ดูแลระบบ (นักเรียนมี search เดิมแบบ server อยู่แล้ว) และฝั่งครู จัดการวิชา/จัดตารางสอน/นักเรียนในที่ปรึกษา (แยกตาราง 3 หน้าออกเป็น client component: [teacher-subject-table](src/components/teacher/teacher-subject-table.tsx), [own-schedule-table](src/components/teacher/own-schedule-table.tsx), [advisory-student-table](src/components/teacher/advisory-student-table.tsx))
+- **ครูแก้ไขได้ทุกวิชา** (เดิมเฉพาะวิชาตัวเอง): [/teacher/subjects](src/app/(app)/teacher/subjects/page.tsx) เปลี่ยนชื่อเป็น "จัดการวิชา" แสดง+แก้ไข+ลบ **ทุกวิชาในระบบ** · service ตัดเงื่อนไข ownerTeacherId ออก (เหลือเช็คมีอยู่จริง + กันลบวิชาที่ยังถูกใช้) · ตอนจัดตารางเลือกได้ทุกวิชา (`assertSubjectAllowed` เช็คแค่มีอยู่จริง) · `ownerTeacherId` ยังบันทึกตอนสร้างแต่ไม่ใช้กั้นสิทธิ์แล้ว
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (35 routes) ✅ · ไม่แตะข้อมูลจริง
+
+### 2026-06-23 — สิทธิ์/บทบาท: แอดมินจัดการแอดมิน, ครู self-service (วิชา/ตาราง), ครูที่ปรึกษา + แก้บัคบังคับรหัสผ่าน + มือถือ
+- **#1 แก้บัค "แก้ไขข้อมูลแล้วบังคับเปลี่ยนรหัสผ่าน"**: ต้นเหตุ `Object.fromEntries(formData)` ส่ง `password: ""` แล้ว `passwordSchema.optional()` ปฏิเสธสตริงว่าง → เพิ่ม `optionalPasswordSchema` (preprocess "" → undefined) ใช้กับ teacher/student/admin — เว้นว่าง = คงรหัสเดิม
+- **#2 แอดมินสร้าง/จัดการแอดมินได้**: หน้า [/admin/admins](src/app/(app)/admin/admins/page.tsx) + service `listAdmins/createAdmin/updateAdmin/deleteAdmin` (กันลบตัวเอง + กันลบแอดมินคนสุดท้าย) + แก้รหัสผ่านแอดมินได้ · เมนู "ผู้ดูแลระบบ" (icon ShieldCheck)
+- **#3 เปลี่ยนอีเมลแอดมิน** → `admin@suntisuk.ac.th` (อัปเดต 1 แถว, non-destructive)
+- **#5 ครูจัดการวิชา/ตารางของตัวเอง**: เพิ่ม `Subject.ownerTeacherId` (null = วิชากลางของแอดมิน) · หน้า [/teacher/subjects](src/app/(app)/teacher/subjects/page.tsx) แก้ได้เฉพาะวิชาที่ตนสร้าง · หน้า [/teacher/schedule/manage](src/app/(app)/teacher/schedule/manage/page.tsx) เพิ่ม/แก้/ลบคาบสอน **เฉพาะคาบของตนเอง** (teacherId ฝั่ง server เสมอ, `ownScheduleSchema` ไม่มี teacherId, เช็คครูไม่ชนคาบ) · เลือกได้เฉพาะวิชาตน+วิชากลาง
+- **#6 ครูที่ปรึกษา**: `Teacher.advisorClassId @unique` (1:1 ครู↔ห้อง) ตั้งในฟอร์มครู (ฝั่งแอดมิน) · หน้า [/teacher/advisory](src/app/(app)/teacher/advisory/page.tsx) เพิ่ม/แก้/ลบนักเรียน **เฉพาะห้องที่ตนเป็นที่ปรึกษา** (classId ตรึงไว้, ย้ายนักเรียนออกไม่ได้) · ตารางครู (แอดมิน) โชว์คอลัมน์ครูที่ปรึกษา + กันตั้งห้องซ้ำ
+- **ไฟล์ใหม่**: services `teacher-self.service.ts` · actions `admin-user.actions.ts`, `teacher-self.actions.ts` · UI ครู `own-subject-dialogs`, `own-schedule-dialogs`, `advisory-student-dialogs` + ตาราง/หน้า · เมนูครูเพิ่ม จัดตารางสอน/วิชาของฉัน/นักเรียนในที่ปรึกษา
+- **UI ตามคำขอเพิ่ม**: เอา StatCard "คาบเรียนวันนี้/ต่อสัปดาห์" (นักเรียน) และ "คาบสอนวันนี้/ต่อสัปดาห์" (ครู) ออก เหลือเฉพาะที่จำเป็น (ตารางคงอยู่) · **ตารางมือถือใหม่** [timetable-mobile.tsx](src/components/timetable/timetable-mobile.tsx): มุมมองรายวันแบบ stacked (กดขยายวัน, วันนี้เปิดอัตโนมัติ, ไฮไลต์คาบปัจจุบัน, ไม่ต้องเลื่อนแนวนอน) แสดงบนจอเล็ก ส่วน md+ ใช้ตารางเดิม (โหมดเลือกคาบใน wizard ยังใช้ตารางกว้าง)
+- **ตรวจสอบ (ไม่แตะข้อมูลจริง)**: `tsc` ✅ · `next build` (35 routes, +/admin/admins, +/teacher/{subjects,schedule/manage,advisory}) ✅ · unit-test validations 8 เคส (blank password→undefined, รหัสสั้นยังถูกปฏิเสธ, ownSchedule ไม่มี teacherId ฯลฯ) + นับ DB read-only ผ่าน ✅ · ข้อมูลครบ: นักเรียน 2 / ครู 31 / วิชา 123 / ห้อง 21 / ตาราง 484 · อีเมลแอดมิน = admin@suntisuk.ac.th ✅
+- **หมายเหตุ**: ไม่ได้รัน create/update จริงที่เขียนข้อมูล/แจ้งเตือนผู้ใช้จริง — เทสต์เฉพาะ schema/build + อ่าน DB · **ต้อง restart dev server** (Prisma client มีฟิลด์ใหม่ ownerTeacherId/advisorClassId)
+
+### 2026-06-22 — ปรับกระดิ่งแจ้งเตือน navbar แสดง 10 รายการ + ลิงก์ไปประวัติ
+- **เหตุผล/คำสั่งผู้ใช้**: กระดิ่ง navbar ควร fetch แค่ 10 การแจ้งเตือนล่าสุด และมีปุ่ม "ดูเพิ่มเติม" เพื่อไปหน้าประวัติการแจ้งเตือน
+- **แก้ไข**:
+  - [src/app/(app)/layout.tsx](src/app/(app)/layout.tsx): เปลี่ยน `getNotifications(user.id, { take: 20 })` → `take: 10`
+  - [src/components/notifications/notification-bell.tsx](src/components/notifications/notification-bell.tsx): รับ prop `role`, ตัดรายการที่แสดง/เก็บสถานะเหลือ 10 รายการ, เพิ่ม footer ลิงก์ `/{role}/notifications`
+  - [src/components/layout/app-shell.tsx](src/components/layout/app-shell.tsx): ส่ง `role` เข้า `NotificationBell`
+  - สร้างหน้า [src/app/(app)/admin/notifications/page.tsx](src/app/(app)/admin/notifications/page.tsx) เพื่อให้แอดมินก็มีหน้าประวัติแจ้งเตือนได้
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน (route `/admin/notifications` เพิ่มขึ้น) ✅
+
+### 2026-06-22 — แก้ build พัง: "Only async functions are allowed to be exported in a 'use server' file"
+- **ปัญหา**: `npm run build` ล้มด้วยข้อความ `Export markNotificationReadAction doesn't exist in target module` + stack trace ชี้ `src/server/actions/notification.actions.ts:13` · สาเหตุจริงคือ `export const NOTIFICATIONS_PAGE_SIZE = 10` อยู่ในไฟล์ `"use server"` ซึ่ง Next.js 16/Turbopack อนุญาตให้ export แค่ async functions เท่านั้น
+- **แก้ไข**: ย้าย `NOTIFICATIONS_PAGE_SIZE` ไปอยู่ใน [src/lib/constants.ts](src/lib/constants.ts) · [src/server/actions/notification.actions.ts](src/server/actions/notification.actions.ts) import กลับมาใช้และ export แต่ async functions · [src/components/notifications/notifications-view.tsx](src/components/notifications/notifications-view.tsx) import ค่าจาก constants แทน
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน 33 routes ✅
+
+### 2026-06-22 — แก้ Excel Sync ตารางสอนข้ามทุกแถว (teacherCode ขาดเลข 0 นำ)
+- **ปัญหา**: ผู้ใช้อัปโหลด `schedules.xlsx` แล้วระบบรายงานข้ามหมด (skipped 484/484) · ตรวจสอบพบว่าไฟล์มี `teacherCode` เป็นเลข เช่น `101`, `202` แต่ฐานข้อมูลเก็บรหัสครูเป็น 4 หลัก `0101`, `0202` · การ lookup `teacherByCode` จึงพลาดทุกแถว
+- **แก้ไข**: [src/server/services/admin.service.ts](src/server/services/admin.service.ts) `syncSchedules` — ถ้าหา `teacherCode` ตรง ๆ ไม่เจอ ให้ลอง fallback เป็นรหัสที่เติมเลข 0 นำจนครบ 4 หลัก (เฉพาะค่าที่เป็นตัวเลข) ก่อนข้ามแถว
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · ทดสอบ mapping กับไฟล์ `schedules.xlsx` + ฐานข้อมูลปัจจุบัน: 484 แถว match ครบ ✅
+
+### 2026-06-22 — ยกเครื่องระบบแลกคาบ + ฝากคาบ (เฉพาะสัปดาห์เดียว, ไม่ถาวร, overlay ไม่แตะข้อมูลจริง)
+- **เหตุผล/คำสั่งผู้ใช้**: "ทำต่อให้เสร็จ ไม่ต้องถาวร แค่สัปดาห์เดียว" — ปิดงานชุดใหญ่ที่ค้าง: #5 แลกคาบเฉพาะสัปดาห์ + เลือกวันที่, #6 ฝากคาบ, #3 server validation สองทาง
+- **หลักการสำคัญ — Non-destructive overlay**: เลิกแก้ตาราง `Schedule` จริงตอนอนุมัติ (เดิม approve จะ swap `day/period` ถาวร) → เปลี่ยนเป็น **overlay คำนวณตอนอ่าน** ใช้ผลเฉพาะ "สัปดาห์ที่เลือก" เท่านั้น สัปดาห์ถัดไปกลับเป็นปกติอัตโนมัติ ฐานข้อมูลไม่ถูกแตะ
+- **Schema** ([prisma/schema.prisma](prisma/schema.prisma)): `SwapRequest.weekStart String?` (จันทร์ของสัปดาห์ที่มีผล) + โมเดลใหม่ `Delegation` (ฝากคาบ: weekStart/scheduleId/from/to/status ACTIVE|DECLINED|CANCELLED) — `db push` ผ่านแบบ **ไม่ต้อง --accept-data-loss** (เพิ่มคอลัมน์ nullable + ตารางใหม่ ปลอดภัย)
+- **Domain ใหม่** [src/lib/weekly-overlay.ts](src/lib/weekly-overlay.ts): `applySwaps` (ย้าย day/period ของสองคาบ + mark "สลับคาบ") / `applyDelegations` (มุมมองห้อง=โชว์ครูคุมแทน, เจ้าของ="ฝากออก", ผู้รับ="รับฝากคาบ") — pure functions + `SlotMark` ใน [timetable.ts](src/lib/timetable.ts)
+- **Engine** [src/server/services/effective-schedule.service.ts](src/server/services/effective-schedule.service.ts): `getClassEffective` / `getTeacherEffective` — ดึง overlay ของสัปดาห์ปัจจุบันมาประกอบเป็นตาราง + marks (teacher view inject คาบคู่สลับ + คาบที่รับฝาก)
+- **#3 both-free**: [swap.service.ts](src/server/services/swap.service.ts) `assertSwapTeachersFree` — ตรวจ **ทั้งสองครูต้องว่าง** ที่คาบปลายทางของกันและกัน (ตอนสร้าง + ตอนอนุมัติ) · กันสัปดาห์อดีต · approve/revert ไม่แตะ Schedule แล้ว · ลบ `getSwapMarks`/`exchangeDayPeriod`
+- **#6 ฝากคาบ** [delegation.service.ts](src/server/services/delegation.service.ts) + [delegation.actions.ts](src/server/actions/delegation.actions.ts): สร้าง (เช็คครูปลายทางว่าง) / ยกเลิก (เจ้าของ) / ปฏิเสธ (ผู้รับ) + แจ้งเตือนครู+นักเรียนในห้อง
+- **Wizard** [swap-wizard.tsx](src/components/swap/swap-wizard.tsx): รองรับ 2 โหมด — `swap` (5 ขั้น: สัปดาห์→คาบเรา→ครู→คาบครู→ยืนยัน) / `delegate` (4 ขั้น: สัปดาห์→คาบเรา→ครูที่ว่าง→ยืนยัน) · ขั้นแรกเลือกวันที่/สัปดาห์ · กรองครูตามเงื่อนไขทั้งสองทาง
+- **UI/หน้าใหม่**: [/teacher/delegations](src/app/(app)/teacher/delegations/page.tsx) (แท็บ รับฝาก/ฝากไป) + [/teacher/delegations/new](src/app/(app)/teacher/delegations/new/page.tsx) + [delegation-list.tsx](src/components/swap/delegation-list.tsx) · ปุ่ม "ฝากคาบ" ในหน้าตารางสอน · เมนู "ฝากคาบสอน" (icon Share2) · grid แสดง badge ม่วง=ฝากคาบ / เหลือง=สลับ · หน้าตารางครู/นักเรียน + แดชบอร์ดนักเรียนใช้ effective schedule
+- **ตรวจสอบ (ไม่แตะข้อมูลจริง)**: `tsc` ✅ · `next build` (33 routes, +delegations ×2) ✅ · unit-test pure overlay 12 เคสผ่านหมด (swap/delegation ทุกมุมมอง + ฐานไม่ถูก mutate) ✅ · นับ DB read-only: นักเรียน 2 / ตาราง 458 / swap 0 / delegation 0 — ข้อมูลครบ ไม่มี swap ตกค้างที่เคย mutate ตาราง ✅
+- **หมายเหตุ**: ไม่ได้รัน createSwap/createDelegation จริง (จะ push แจ้งเตือนผู้ใช้จริง) — เทสต์เฉพาะ logic บริสุทธิ์ + build/type · **ต้อง restart dev server** เพราะ Prisma client มีโมเดลใหม่
+
+### 2026-06-22 — หน้าแลกคาบเป็น wizard เต็มหน้า (เลิก modal ที่ตารางล้น)
+- **เหตุผล**: ผู้ใช้รายงานว่า modal ขอแลกคาบแคบ ตารางล้น เลื่อนยาก — อยากได้แบบทีละหน้า (เหมือน wizard Windows / login Google)
+- **ทำ**: สร้าง [swap-wizard.tsx](src/components/swap/swap-wizard.tsx) — **full-page stepper 4 ขั้น** (เลือกคาบของคุณ → เลือกครู → เลือกคาบของครู → ยืนยัน) มีปุ่มถัดไป/ย้อนกลับ + แถบ step indicator, ตารางเต็มความกว้างหน้า ไม่อึดอัด · หน้าใหม่ [/teacher/swaps/new](src/app/(app)/teacher/swaps/new/page.tsx) · ปุ่ม "ขอแลกคาบสอน" ในหน้า /teacher/schedule + /teacher/swaps เปลี่ยนเป็นลิงก์ไปหน้า wizard
+- **ปรับ logic บางส่วน (เกริ่น #3)**: ขั้นเลือกครู แสดงเฉพาะครูที่สอนห้องนั้น **และว่างในคาบต้นทาง** (กรองครูที่แลกไม่ได้ออก)
+- **ลบไฟล์ที่ไม่ใช้แล้ว**: `swap-request-dialog.tsx` (modal เดิม), `week-cards.tsx` (มือถือใช้ grid transpose แทนแล้ว)
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (29 routes, +/teacher/swaps/new) ✅ · /teacher/swaps/new ไม่ล็อกอิน → 307 ไป login ปกติ ✅
+- **ยังเหลือ (swap overhaul)**: #5 แลกเฉพาะ 1 สัปดาห์ + เลือกวันที่, #6 ฝากคาบ, #3 ส่วน server validation + เงื่อนไขสองทาง (A ต้องว่างคาบของ B ด้วย) — ต้องเพิ่ม DB model per-week
+
+### 2026-06-22 — แก้ไขข้อมูลไม่บังคับเปลี่ยนรหัส + ออกแบบตารางใหม่ + fix preview ไฟล์ (ชุดที่ 1 ของลิสต์ใหญ่)
+- **#1 แก้ไม่บังคับเปลี่ยนรหัส**: คอมโพเนนต์ใหม่ [readonly-field.tsx](src/components/admin/readonly-field.tsx) (โชว์ค่า disabled + hidden input ส่งค่าเดิม) — ใช้กับ รหัสครู/รหัสนักเรียน/รหัสวิชา ในฟอร์มแก้ไข → แก้ฟิลด์อื่นได้โดยรหัสไม่เปลี่ยน
+- **#2 ตารางใหม่ (transpose)**: เขียน [timetable-grid.tsx](src/components/timetable/timetable-grid.tsx) ใหม่ — **วัน=แถว, คาบ=คอลัมน์**, เส้นตารางทุกเซลล์ชัด (border-collapse), คาบว่างแสดง "คาบว่าง" (prop `emptyCell="free"|"blank"`), คอลัมน์คาบพัก/โฮมรูมแสดงเป็นหัวคอลัมน์, แถววันนี้/คาบปัจจุบันไฮไลต์, รองรับ dayRemap (สลับวัน) · หน้านักเรียนใช้ grid เดียวทุกขนาดจอ (เลื่อนแนวนอนบนมือถือ → เห็นคาบว่างครบ) เลิกใช้ WeekCards
+- **#4 (บางส่วน)**: หน้าขอแลกคาบส่งช่องว่างเป็น `emptyCell="blank"` (ไม่โชว์คำว่า "ว่าง")
+- **#7 preview ไฟล์**: [attachment-list.tsx](src/components/attachments/attachment-list.tsx) — รูปไม่ล้นกรอบ/จอแล้ว (`max-w-full max-h-[75vh] object-contain` + กล่อง `w-[95vw]`), PDF ใช้ `<object>`+iframe สูง `h-[80vh]` เลื่อนดูครบทุกหน้า, responsive
+- **ตรวจสอบ**: `tsc` ✅ · `next build` (28 routes) ✅
+- **ยังไม่ทำ (ก้อนใหญ่ถัดไป — ยกเครื่องระบบแลกคาบ)**: #3 ตรรกะแลกคาบใหม่ (ทั้งสองฝ่ายต้องว่างคาบของอีกฝ่าย + ซ่อนครูที่แลกไม่ได้), #5 แลกเฉพาะ 1 สัปดาห์ (เลือกวันที่ก่อนทำรายการ → ระบบหาสัปดาห์), #6 ระบบฝากคาบ (มอบคาบให้ครูที่ว่างมาคุมแทนโดยไม่แลก + ขึ้นป้ายในตารางครู/นักเรียน), #4 รื้อ layout หน้าแลกคาบ — ต้องเพิ่ม DB model ใหม่ (per-week per-period swap/delegation) + คำนวณตารางผลลัพธ์รายสัปดาห์
+
 ### 2026-06-22 — เลขที่นักเรียน (เรียง+กันซ้ำในห้อง) + performance (pagination/lazy/cache)
 - **เลขที่**: เพิ่ม `Student.rollNumber Int?` + `@@unique([classId, rollNumber])` ([schema.prisma](prisma/schema.prisma), db push --accept-data-loss, ข้อมูลจริงไม่หาย) — กันซ้ำในห้องระดับ DB (NULL ยังซ้ำได้) · validation `studentSchema` +rollNumber (preprocess ""→undefined, coerce, >0) · service: เก็บตอน create/update + `assertRollFree()` แจ้ง "เลขที่ X มีอยู่แล้วในห้องนี้" + เรียงทุก list ตาม (class, rollNumber, code) + คอลัมน์ export/import · action `studentDupMessage()` โชว์ข้อความซ้ำที่เข้าใจง่าย
 - **UI เลขที่**: ช่อง "เลขที่" ในฟอร์มเพิ่ม/แก้นักเรียน, คอลัมน์ "เลขที่" ในตาราง ([student-table.tsx](src/components/admin/student-table.tsx)), แสดง+เรียงเลขที่ในตัวเลือกผู้รับงาน ([assignment-create-dialog.tsx](src/components/assignments/assignment-create-dialog.tsx)) + รายชื่อส่งงาน ([teacher-assignments-board.tsx](src/components/assignments/teacher-assignments-board.tsx))

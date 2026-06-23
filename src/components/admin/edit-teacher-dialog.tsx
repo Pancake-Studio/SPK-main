@@ -2,12 +2,16 @@
 
 import { EntityFormDialog } from "@/components/admin/entity-form-dialog";
 import { FormField } from "@/components/admin/form-field";
+import { ReadOnlyField } from "@/components/admin/readonly-field";
+import { SelectField, type Option } from "@/components/admin/select-field";
 import { Button } from "@/components/ui/button";
 import { Pencil } from "lucide-react";
 import { updateTeacherAction } from "@/server/actions/admin.actions";
 import type { TeacherRow } from "@/components/admin/teacher-table";
 
-export function EditTeacherDialog({ teacher }: { teacher: TeacherRow }) {
+const NO_ADVISOR: Option = { value: "", label: "— ไม่เป็นครูที่ปรึกษา —" };
+
+export function EditTeacherDialog({ teacher, classes }: { teacher: TeacherRow; classes: Option[] }) {
   return (
     <EntityFormDialog
       title="แก้ไขข้อมูลครู"
@@ -39,13 +43,7 @@ export function EditTeacherDialog({ teacher }: { teacher: TeacherRow }) {
               defaultValue={teacher.email}
               error={fieldErrors?.email}
             />
-            <FormField
-              name="teacherCode"
-              label="รหัสครู"
-              required
-              defaultValue={teacher.teacherCode}
-              error={fieldErrors?.teacherCode}
-            />
+            <ReadOnlyField name="teacherCode" label="รหัสครู" value={teacher.teacherCode} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
@@ -75,6 +73,15 @@ export function EditTeacherDialog({ teacher }: { teacher: TeacherRow }) {
               error={fieldErrors?.password}
             />
           </div>
+          <SelectField
+            name="advisorClassId"
+            label="ครูที่ปรึกษาประจำห้อง"
+            options={[NO_ADVISOR, ...classes]}
+            defaultValue={teacher.advisorClassId ?? ""}
+            placeholder="— ไม่เป็นครูที่ปรึกษา —"
+            error={fieldErrors?.advisorClassId}
+            hint="ครูที่ปรึกษาแก้ไขข้อมูลนักเรียนเฉพาะห้องนี้ได้"
+          />
         </>
       )}
     </EntityFormDialog>

@@ -18,6 +18,14 @@ export const passwordSchema = z
   .min(8, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร")
   .max(128);
 
+/** Optional password where a BLANK field means "keep current" (no change).
+ *  Forms submit "" for an untouched password input; treat that as undefined so
+ *  editing a teacher/student/admin never forces typing a new password. */
+export const optionalPasswordSchema = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  passwordSchema.optional(),
+);
+
 /* ------------------------------------------------------------------ */
 /*  Auth                                                               */
 /* ------------------------------------------------------------------ */
@@ -46,6 +54,8 @@ export const changePasswordSchema = z
 export const createSwapSchema = z.object({
   sourceScheduleId: z.string().min(1, "เลือกคาบของคุณที่ต้องการแลก"),
   targetScheduleId: z.string().min(1, "เลือกคาบของครูเป้าหมาย"),
+  // The swap is temporary — a date inside the week it applies to.
+  weekDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "เลือกสัปดาห์ที่ต้องการแลก"),
   reason: z.string().trim().max(500, "เหตุผลยาวเกินไป").optional(),
 });
 export type CreateSwapInput = z.infer<typeof createSwapSchema>;
@@ -56,6 +66,15 @@ export const swapDecisionSchema = z.object({
 });
 export type SwapDecisionInput = z.infer<typeof swapDecisionSchema>;
 
+/** Delegate ("ฝากคาบ") a single period to a free teacher for one week. */
+export const createDelegationSchema = z.object({
+  scheduleId: z.string().min(1, "เลือกคาบของคุณที่ต้องการฝาก"),
+  toTeacherId: z.string().min(1, "เลือกครูที่จะมาคุมแทน"),
+  weekDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "เลือกสัปดาห์ที่ต้องการฝาก"),
+  reason: z.string().trim().max(500, "เหตุผลยาวเกินไป").optional(),
+});
+export type CreateDelegationInput = z.infer<typeof createDelegationSchema>;
+
 /* ------------------------------------------------------------------ */
 /*  Admin: entity management                                           */
 /* ------------------------------------------------------------------ */
@@ -65,18 +84,23 @@ const roleEnum = z.enum(ALL_ROLES as [string, ...string[]]);
 export const teacherSchema = z.object({
   name: z.string().trim().min(1, "กรอกชื่อ-นามสกุล").max(120),
   email: emailSchema,
-  password: passwordSchema.optional(),
+  password: optionalPasswordSchema,
   teacherCode: z.string().trim().min(1, "กรอกรหัสครู").max(40),
   title: z.string().trim().max(20).optional(),
   department: z.string().trim().max(80).optional(),
   phone: z.string().trim().max(30).optional(),
+  // ครูที่ปรึกษา — ห้องที่ครูคนนี้เป็นที่ปรึกษา ("" = ไม่เป็นที่ปรึกษา).
+  advisorClassId: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().optional(),
+  ),
 });
 export type TeacherInput = z.infer<typeof teacherSchema>;
 
 export const studentSchema = z.object({
   name: z.string().trim().min(1, "กรอกชื่อ-นามสกุล").max(120),
   email: emailSchema,
-  password: passwordSchema.optional(),
+  password: optionalPasswordSchema,
   studentCode: z.string().trim().min(1, "กรอกรหัสนักเรียน").max(40),
   title: z.string().trim().max(20).optional(),
   // เลขที่ในห้อง — optional; empty string → undefined (no number yet).
@@ -144,6 +168,29 @@ export type StudentUpdateInput = z.infer<typeof studentUpdateSchema>;
 export type ClassUpdateInput = z.infer<typeof classUpdateSchema>;
 export type SubjectUpdateInput = z.infer<typeof subjectUpdateSchema>;
 export type ScheduleUpdateInput = z.infer<typeof scheduleUpdateSchema>;
+
+/* ------------------------------------------------------------------ */
+/*  Admin accounts (an admin can manage other admins)                  */
+/* ------------------------------------------------------------------ */
+
+export const adminSchema = z.object({
+  name: z.string().trim().min(1, "กรอกชื่อ-นามสกุล").max(120),
+  email: emailSchema,
+  password: optionalPasswordSchema, // blank on edit = keep; blank on create = default
+});
+export const adminUpdateSchema = adminSchema.extend(withId);
+export type AdminInput = z.infer<typeof adminSchema>;
+export type AdminUpdateInput = z.infer<typeof adminUpdateSchema>;
+
+/* ------------------------------------------------------------------ */
+/*  Teacher self-service timetable (own periods only — teacherId is     */
+/*  forced to the signed-in teacher server-side, never trusted here).   */
+/* ------------------------------------------------------------------ */
+
+export const ownScheduleSchema = scheduleSchema.omit({ teacherId: true });
+export const ownScheduleUpdateSchema = ownScheduleSchema.extend(withId);
+export type OwnScheduleInput = z.infer<typeof ownScheduleSchema>;
+export type OwnScheduleUpdateInput = z.infer<typeof ownScheduleUpdateSchema>;
 
 /* ------------------------------------------------------------------ */
 /*  Bell schedule (period times + ordering templates)                  */

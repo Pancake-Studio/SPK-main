@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  ShieldCheck,
   Users,
   GraduationCap,
   School,
@@ -12,6 +13,7 @@ import {
   Clock,
   ClipboardList,
   ArrowLeftRight,
+  Share2,
   Megaphone,
   FileSpreadsheet,
   Settings,
@@ -24,6 +26,7 @@ import type { NavIcon, NavItem } from "@/lib/nav";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
   dashboard: LayoutDashboard,
+  admins: ShieldCheck,
   teachers: Users,
   students: GraduationCap,
   classes: School,
@@ -32,6 +35,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   periods: Clock,
   tasks: ClipboardList,
   swap: ArrowLeftRight,
+  delegate: Share2,
   announce: Megaphone,
   sync: FileSpreadsheet,
   settings: Settings,
@@ -48,14 +52,19 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
 
+  // A nav item matches when the path equals its href or sits under it. When two
+  // items both match (e.g. /teacher/schedule and /teacher/schedule/manage), only
+  // the MOST specific (longest href) should highlight — otherwise both light up.
+  const activeHref = items.reduce((best, item) => {
+    const matches = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    return matches && item.href.length > best.length ? item.href : best;
+  }, "");
+
   return (
     <nav className="flex flex-col gap-1 px-3">
       {items.map((item) => {
         const Icon = ICONS[item.icon];
-        const isRoot = item.href.split("/").length <= 2;
-        const active = isRoot
-          ? pathname === item.href
-          : pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = item.href === activeHref;
 
         return (
           <Link

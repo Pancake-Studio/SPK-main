@@ -3,7 +3,6 @@ import {
   DEFAULT_BELL_SLOTS,
   classSlots,
   currentSlot,
-  nextClassSlot,
   type BellSlotData,
 } from "@/lib/bell-schedule";
 
@@ -25,6 +24,14 @@ export type TimetableSlot = {
 
 export type TimetableGrid = Record<string, Record<number, TimetableSlot | undefined>>;
 
+/** A per-slot annotation rendered as a small badge + tooltip in the grid.
+ *  `tone` selects the colour (amber for a week swap, violet for a delegation). */
+export type SlotMark = {
+  tone: "swap" | "delegate";
+  label: string;
+  tooltip?: string;
+};
+
 /** Map a JS Date to our day key, or null on weekends. */
 export function dayKeyForDate(date = new Date()): DayKey | null {
   const idx = date.getDay(); // 0 Sun … 6 Sat
@@ -41,16 +48,6 @@ export function currentPeriodNo(
   if (!dayKeyForDate(date)) return null;
   const s = currentSlot(bellSlots, date);
   return s && s.periodNumber != null ? s.periodNumber : null;
-}
-
-/** The next upcoming class period today (after `now`), or null. */
-export function nextPeriodNo(
-  date = new Date(),
-  bellSlots: BellSlotData[] = DEFAULT_BELL_SLOTS,
-): number | null {
-  if (!dayKeyForDate(date)) return null;
-  const s = nextClassSlot(bellSlots, date);
-  return s?.periodNumber ?? null;
 }
 
 /** Time metadata ({ period, start, end }) for a class-period number. */

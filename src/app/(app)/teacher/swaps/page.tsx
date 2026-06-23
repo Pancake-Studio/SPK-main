@@ -1,8 +1,6 @@
+import Link from "next/link";
+import { ArrowLeftRight } from "lucide-react";
 import { requireTeacherProfile } from "@/lib/auth";
-import {
-  getTeacherSchedule,
-  getTeachersWithSchedules,
-} from "@/server/services/schedule.service";
 import {
   getSwapsForTeacher,
   mapSwapToClient,
@@ -10,19 +8,15 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { SwapList } from "@/components/swap/swap-list";
-import { SwapRequestDialog } from "@/components/swap/swap-request-dialog";
 import { SWAP_STATUS } from "@/lib/constants";
 
 export const metadata = { title: "แลกคาบสอน" };
 
 export default async function TeacherSwapsPage() {
   const { teacher } = await requireTeacherProfile();
-  const [slots, others, swaps] = await Promise.all([
-    getTeacherSchedule(teacher.id),
-    getTeachersWithSchedules(teacher.id),
-    getSwapsForTeacher(teacher.id),
-  ]);
+  const swaps = await getSwapsForTeacher(teacher.id);
 
   const incoming = swaps.incoming.map(mapSwapToClient);
   const outgoing = swaps.outgoing.map(mapSwapToClient);
@@ -34,7 +28,12 @@ export default async function TeacherSwapsPage() {
         title="แลกคาบสอน"
         description="ส่งคำขอแลกคาบ และจัดการคำขอที่เข้ามา"
       >
-        <SwapRequestDialog mySlots={slots} teachers={others} />
+        <Button asChild>
+          <Link href="/teacher/swaps/new">
+            <ArrowLeftRight />
+            ขอแลกคาบสอน
+          </Link>
+        </Button>
       </PageHeader>
 
       <Tabs defaultValue="incoming">

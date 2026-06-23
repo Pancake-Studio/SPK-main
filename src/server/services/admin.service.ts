@@ -3,7 +3,8 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
-import { SWAP_STATUS, ROLES } from "@/lib/constants";
+import { SWAP_STATUS, ROLES, NOTIFICATION_TYPES } from "@/lib/constants";
+import { notifyUsers } from "./notification.service";
 import {
   teacherSchema,
   studentSchema,
@@ -22,9 +23,52 @@ import type {
   ClassUpdateInput,
   SubjectUpdateInput,
   ScheduleUpdateInput,
+  AdminInput,
+  AdminUpdateInput,
+  AnnouncementInput,
 } from "@/lib/validations";
 
 const DEFAULT_PASSWORD = "password123";
+
+/* ---------------------------------- Admins ------------------------------ */
+
+export function listAdmins() {
+  return db.user.findMany({
+    where: { role: ROLES.ADMIN },
+    select: { id: true, name: true, email: true, isActive: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function createAdmin(input: AdminInput) {
+  const passwordHash = await hashPassword(input.password || DEFAULT_PASSWORD);
+  return db.user.create({
+    data: { email: input.email, passwordHash, role: ROLES.ADMIN, name: input.name },
+  });
+}
+
+export async function updateAdmin(input: AdminUpdateInput) {
+  const user = await db.user.findUnique({ where: { id: input.id }, select: { role: true } });
+  if (!user || user.role !== ROLES.ADMIN) throw new Error("ไม่พบผู้ดูแลระบบ");
+  await db.user.update({
+    where: { id: input.id },
+    data: {
+      name: input.name,
+      email: input.email,
+      ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
+    },
+  });
+}
+
+/** Delete an admin. Refuses to remove yourself or the last remaining admin. */
+export async function deleteAdmin(id: string, currentUserId: string) {
+  if (id === currentUserId) throw new Error("ลบบัญชีของตัวเองไม่ได้");
+  const count = await db.user.count({ where: { role: ROLES.ADMIN } });
+  if (count <= 1) throw new Error("ต้องมีผู้ดูแลระบบอย่างน้อย 1 คน");
+  const target = await db.user.findUnique({ where: { id }, select: { role: true } });
+  if (!target || target.role !== ROLES.ADMIN) throw new Error("ไม่พบผู้ดูแลระบบ");
+  await db.user.delete({ where: { id } });
+}
 
 /* --------------------------------- Stats -------------------------------- */
 
@@ -79,12 +123,27 @@ export async function getSwapStatusBreakdown() {
 
 export function listTeachers() {
   return db.teacher.findMany({
-    include: { user: true, _count: { select: { schedules: true } } },
+    include: {
+      user: true,
+      advisorClass: { select: { className: true } },
+      _count: { select: { schedules: true } },
+    },
     orderBy: { teacherCode: "asc" },
   });
 }
 
+/** Reject assigning an advisor class that another teacher already advises. */
+async function assertAdvisorFree(classId: string | null | undefined, excludeTeacherId?: string) {
+  if (!classId) return;
+  const taken = await db.teacher.findFirst({
+    where: { advisorClassId: classId, ...(excludeTeacherId ? { id: { not: excludeTeacherId } } : {}) },
+    include: { user: { select: { name: true } } },
+  });
+  if (taken) throw new Error(`ห้องนี้มีครูที่ปรึกษาแล้ว (${taken.user.name})`);
+}
+
 export async function createTeacher(input: TeacherInput) {
+  await assertAdvisorFree(input.advisorClassId);
   const passwordHash = await hashPassword(input.password || DEFAULT_PASSWORD);
   return db.user.create({
     data: {
@@ -98,6 +157,7 @@ export async function createTeacher(input: TeacherInput) {
           title: input.title || null,
           department: input.department || null,
           phone: input.phone || null,
+          advisorClassId: input.advisorClassId || null,
         },
       },
     },
@@ -131,6 +191,7 @@ export async function deleteTeacher(teacherId: string) {
 export async function updateTeacher(input: TeacherUpdateInput) {
   const teacher = await db.teacher.findUnique({ where: { id: input.id }, select: { userId: true } });
   if (!teacher) throw new Error("ไม่พบข้อมูลครู");
+  await assertAdvisorFree(input.advisorClassId, input.id);
   const updates: { passwordHash?: string } = {};
   if (input.password) {
     updates.passwordHash = await hashPassword(input.password);
@@ -151,6 +212,7 @@ export async function updateTeacher(input: TeacherUpdateInput) {
         title: input.title || null,
         department: input.department || null,
         phone: input.phone || null,
+        advisorClassId: input.advisorClassId || null,
       },
     }),
   ]);
@@ -182,13 +244,6 @@ export async function deleteTeachers(ids: string[]) {
 }
 
 /* -------------------------------- Students ------------------------------ */
-
-export function listStudents() {
-  return db.student.findMany({
-    include: { user: true, class: true },
-    orderBy: [{ class: { className: "asc" } }, { rollNumber: "asc" }, { studentCode: "asc" }],
-  });
-}
 
 /** Paginated + searchable student list (ordered by class, then เลขที่). */
 export async function listStudentsPaged(opts: {
@@ -517,6 +572,42 @@ export function listAnnouncements() {
     orderBy: { createdAt: "desc" },
     take: 100,
   });
+}
+
+/** Create an announcement and fan out notifications to its audience. Shared by
+ *  admins and teachers (any teacher may post). Returns the recipient count. */
+export async function createAnnouncement(
+  authorId: string,
+  input: AnnouncementInput,
+): Promise<number> {
+  const announcement = await db.announcement.create({
+    data: { ...input, authorId },
+  });
+
+  const plainBody = input.body
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const where =
+    input.audience === "TEACHERS"
+      ? { role: ROLES.TEACHER }
+      : input.audience === "STUDENTS"
+        ? { role: ROLES.STUDENT }
+        : {};
+  const recipients = await db.user.findMany({ where, select: { id: true } });
+  await notifyUsers(
+    recipients.map((u) => u.id),
+    {
+      type: input.isUrgent ? NOTIFICATION_TYPES.EMERGENCY : NOTIFICATION_TYPES.ANNOUNCEMENT,
+      title: input.isUrgent ? `⚠ ด่วน: ${input.title}` : input.title,
+      message: plainBody.slice(0, 240),
+      linkUrl: `/announcements/${announcement.id}`,
+    },
+  );
+
+  return recipients.length;
 }
 
 /** Lookup maps used to resolve CSV codes -> ids during import. */
@@ -865,7 +956,14 @@ export async function syncSchedules(rows: SyncRow[]): Promise<SyncResult> {
     const className = str(row, "className").toUpperCase();
     const classId = classByName.get(className);
     const subjectId = subjectByCode.get(str(row, "subjectCode").toUpperCase());
-    const teacherId = teacherByCode.get(str(row, "teacherCode").toUpperCase());
+    const rawTeacherCode = str(row, "teacherCode").toUpperCase();
+    // Excel often drops leading zeros from numeric teacher codes (101 -> "0101").
+    // Fall back to a zero-padded 4-digit lookup before giving up.
+    const teacherId =
+      teacherByCode.get(rawTeacherCode) ??
+      (/^\d+$/.test(rawTeacherCode)
+        ? teacherByCode.get(rawTeacherCode.padStart(4, "0"))
+        : undefined);
     const day = str(row, "day").toUpperCase().slice(0, 3);
     const period = row.period;
     const parsed = scheduleSchema.safeParse({

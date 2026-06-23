@@ -2,9 +2,9 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import type { TimetableSlot } from "@/lib/timetable";
-import { SWAP_STATUS, type DayKey } from "@/lib/constants";
+import { type DayKey } from "@/lib/constants";
 
-const scheduleInclude = {
+export const scheduleInclude = {
   subject: true,
   class: true,
   teacher: { include: { user: true } },
@@ -49,42 +49,6 @@ export async function getTeacherSchedule(
   return rows.map(toSlot);
 }
 
-/** A teacher's weekly timetable INCLUDING the swapped-in counterpart periods.
- *  After a swap, teacher A still teaches their own (moved) period, but they also
- *  want to SEE the partner period — now taught by teacher B at A's old slot —
- *  highlighted. So we merge in, for each active swap A is part of, the partner
- *  schedule (the side A does not teach). Both ends get highlighted via swapMarks. */
-export async function getTeacherScheduleWithSwaps(
-  teacherId: string,
-): Promise<TimetableSlot[]> {
-  const own = await getTeacherSchedule(teacherId);
-  const ownIds = new Set(own.map((s) => s.id));
-
-  const swaps = await db.swapRequest.findMany({
-    where: {
-      status: { in: [SWAP_STATUS.APPROVED, SWAP_STATUS.CANCEL_REQUESTED] },
-      OR: [{ requesterId: teacherId }, { targetTeacherId: teacherId }],
-    },
-    include: {
-      sourceSchedule: { include: scheduleInclude },
-      targetSchedule: { include: scheduleInclude },
-    },
-  });
-
-  const extras: TimetableSlot[] = [];
-  const seen = new Set<string>();
-  for (const sw of swaps) {
-    for (const sch of [sw.sourceSchedule, sw.targetSchedule]) {
-      // The counterpart is the side this teacher does NOT currently teach.
-      if (sch.teacherId !== teacherId && !ownIds.has(sch.id) && !seen.has(sch.id)) {
-        seen.add(sch.id);
-        extras.push(toSlot(sch));
-      }
-    }
-  }
-  return [...own, ...extras];
-}
-
 /** All timetable slots for a class (what a student sees). */
 export async function getClassSchedule(
   classId: string,
@@ -104,14 +68,6 @@ export async function getClassBrief(classId: string) {
   });
 }
 
-export async function getScheduleSlot(id: string) {
-  const row = await db.schedule.findUnique({
-    where: { id },
-    include: scheduleInclude,
-  });
-  return row ? toSlot(row) : null;
-}
-
 /** Teachers (optionally excluding one) with their full slot lists — for the
  *  swap-target picker. */
 export async function getTeachersWithSchedules(excludeTeacherId?: string) {
@@ -127,12 +83,3 @@ export async function getTeachersWithSchedules(excludeTeacherId?: string) {
   }));
 }
 
-/** A teacher's slots for a single weekday (used for swap targeting). */
-export async function getTeacherDaySlots(teacherId: string, day: DayKey) {
-  const rows = await db.schedule.findMany({
-    where: { teacherId, day },
-    include: scheduleInclude,
-    orderBy: { period: "asc" },
-  });
-  return rows.map(toSlot);
-}

@@ -2,6 +2,7 @@
 
 import { EntityFormDialog } from "@/components/admin/entity-form-dialog";
 import { FormField } from "@/components/admin/form-field";
+import { ReadOnlyField } from "@/components/admin/readonly-field";
 import { Button } from "@/components/ui/button";
 import { Pencil } from "lucide-react";
 import { updateSubjectAction } from "@/server/actions/admin.actions";
@@ -24,7 +25,7 @@ export function EditSubjectDialog({ subject }: { subject: SubjectRow }) {
         <>
           <input type="hidden" name="id" value={subject.id} />
           <FormField name="subjectName" label="ชื่อวิชา" required defaultValue={subject.subjectName} error={fieldErrors?.subjectName} />
-          <FormField name="subjectCode" label="รหัสวิชา" required defaultValue={subject.subjectCode} error={fieldErrors?.subjectCode} />
+          <ReadOnlyField name="subjectCode" label="รหัสวิชา" value={subject.subjectCode} />
           <FormField name="colorHex" label="สีประจำวิชา (HEX)" placeholder="#7C3AED" defaultValue={subject.colorHex ?? ""} error={fieldErrors?.colorHex} />
         </>
       )}

@@ -2,6 +2,7 @@
 
 import { EntityFormDialog } from "@/components/admin/entity-form-dialog";
 import { FormField } from "@/components/admin/form-field";
+import { ReadOnlyField } from "@/components/admin/readonly-field";
 import { SelectField, type Option } from "@/components/admin/select-field";
 import { Button } from "@/components/ui/button";
 import { Pencil } from "lucide-react";
@@ -43,13 +44,7 @@ export function EditStudentDialog({ student, classes }: { student: StudentRow; c
               defaultValue={student.email}
               error={fieldErrors?.email}
             />
-            <FormField
-              name="studentCode"
-              label="รหัสนักเรียน"
-              required
-              defaultValue={student.studentCode}
-              error={fieldErrors?.studentCode}
-            />
+            <ReadOnlyField name="studentCode" label="รหัสนักเรียน" value={student.studentCode} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField

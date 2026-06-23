@@ -106,12 +106,19 @@ model Teacher {
   title       String? // Mr. / Mrs. / Ms. / Dr.
   department  String?
   phone       String?
+  // ครูที่ปรึกษา: the homeroom class this teacher advises (1:1). An advisor may
+  // add/edit students ONLY in this class. Nullable @unique → one advisor/class.
+  advisorClassId String? @unique
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  advisorClass Class? @relation("ClassAdvisor", fields: [advisorClassId], references: [id])
 
   schedules            Schedule[]
+  ownedSubjects        Subject[]     @relation("SubjectOwner")
   swapRequestsMade     SwapRequest[] @relation("SwapRequester")
   swapRequestsReceived SwapRequest[] @relation("SwapTarget")
+  delegationsMade      Delegation[]  @relation("DelegationFrom")
+  delegationsReceived  Delegation[]  @relation("DelegationTo")
   assignments          Assignment[]
 
   @@index([department])
@@ -146,6 +153,7 @@ model Class {
   students    Student[]
   schedules   Schedule[]
   assignments Assignment[]
+  advisor     Teacher?  @relation("ClassAdvisor")
 
   @@index([gradeLevel])
 }
@@ -156,8 +164,14 @@ model Subject {
   subjectName String
   subjectCode String  @unique
   colorHex    String? // optional accent for timetable cells
+  // วิชาของครู: when a teacher creates a subject it is "owned" by them and only
+  // they (or an admin) may edit it. Admin-created subjects have a null owner.
+  ownerTeacherId String?
 
+  owner     Teacher?   @relation("SubjectOwner", fields: [ownerTeacherId], references: [id])
   schedules Schedule[]
+
+  @@index([ownerTeacherId])
 }
 
 /// A single timetable slot: which teacher teaches which subject to which class
@@ -179,6 +193,7 @@ model Schedule {
 
   swapsAsSource SwapRequest[] @relation("SwapSourceSchedule")
   swapsAsTarget SwapRequest[] @relation("SwapTargetSchedule")
+  delegations   Delegation[]
 
   // A class can have only one lesson per day+period.
   @@unique([classId, day, period])
@@ -186,14 +201,19 @@ model Schedule {
   @@index([day, period])
 }
 
-/// Teacher period-swap request (the core feature).
-/// On APPROVE we exchange `Schedule.teacherId` between source and target slots.
+/// Teacher period-swap request (the core feature) — TEMPORARY, one week only.
+/// Non-destructive: the base `Schedule` is never mutated. An APPROVED swap is an
+/// overlay applied at read-time ONLY for the week given by `weekStart` (the
+/// Monday of the affected week), then it naturally stops applying next week.
+/// Both periods belong to the SAME class; both teachers must be free at each
+/// other's target time (validated on create).
 model SwapRequest {
   id               String   @id @default(cuid())
   requesterId      String
   targetTeacherId  String
   sourceScheduleId String
   targetScheduleId String
+  weekStart        String?  // Monday "YYYY-MM-DD" of the week this swap applies to
   reason           String?
   status           String   @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | CANCEL_REQUESTED | REVERTED
   decidedById      String?
@@ -217,6 +237,32 @@ model SwapRequest {
   @@index([requesterId])
   @@index([targetTeacherId])
   @@index([status])
+  @@index([weekStart])
+}
+
+/// Period delegation ("ฝากคาบ") for ONE week — TEMPORARY. The owning teacher
+/// hands a single period to a covering teacher (who must be free at that time)
+/// WITHOUT swapping anything. Non-destructive: the base `Schedule` is untouched;
+/// the cover is applied as a read-time overlay only for `weekStart`'s week, then
+/// reverts. Shown in the owner's, the cover's, and the class's timetable.
+model Delegation {
+  id            String   @id @default(cuid())
+  weekStart     String   // Monday "YYYY-MM-DD" of the week this applies to
+  scheduleId    String   // the period being covered
+  fromTeacherId String   // owner of the period
+  toTeacherId   String   // covering teacher (free at that time)
+  reason        String?
+  status        String   @default("ACTIVE") // ACTIVE | DECLINED | CANCELLED
+  createdAt     DateTime @default(now())
+
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  fromTeacher Teacher  @relation("DelegationFrom", fields: [fromTeacherId], references: [id])
+  toTeacher   Teacher  @relation("DelegationTo", fields: [toTeacherId], references: [id])
+
+  @@index([weekStart])
+  @@index([scheduleId])
+  @@index([toTeacherId])
+  @@index([fromTeacherId])
 }
 
 /// Immutable audit trail for swaps: who did what, with before/after snapshots.

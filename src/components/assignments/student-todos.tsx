@@ -35,7 +35,7 @@ function fmtDue(iso: string | null) {
   return new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function TaskItem({ task }: { task: StudentTask }) {
+function TaskItem({ task, onToggle }: { task: StudentTask; onToggle: (t: StudentTask) => void }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [toSubmit, setToSubmit] = React.useState<AttachmentMeta[]>([]);
@@ -54,11 +54,6 @@ function TaskItem({ task }: { task: StudentTask }) {
     });
   }
 
-  function toggle() {
-    if (task.kind === "assigned") run(() => toggleSubmissionAction(task.id, !task.done));
-    else run(() => togglePersonalTodoAction(task.id, !task.done));
-  }
-
   function submit() {
     if (toSubmit.length === 0) return;
     run(async () => {
@@ -73,9 +68,8 @@ function TaskItem({ task }: { task: StudentTask }) {
       <div className="flex items-start gap-3">
         <button
           type="button"
-          onClick={toggle}
-          disabled={pending}
-          className="mt-0.5 shrink-0"
+          onClick={() => onToggle(task)}
+          className="mt-0.5 shrink-0 transition-transform active:scale-90"
           aria-label={task.done ? "ทำเครื่องหมายว่ายังไม่เสร็จ" : "ทำเครื่องหมายว่าเสร็จ"}
         >
           {task.done ? (
@@ -164,15 +158,49 @@ function TaskItem({ task }: { task: StudentTask }) {
   );
 }
 
+const taskKey = (t: StudentTask) => `${t.kind}-${t.id}`;
+
 export function StudentTodos({ tasks }: { tasks: StudentTask[] }) {
   const [sort, setSort] = React.useState<SortKey>("newest");
+  // Optimistic "done" overrides keyed by task — the tick flips instantly; the
+  // server call runs in the background and we roll back only if it fails.
+  const [overrides, setOverrides] = React.useState<Record<string, boolean>>({});
 
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.done).length;
+  // Apply optimistic overrides on top of the server-provided tasks.
+  const view = React.useMemo(
+    () => tasks.map((t) => (taskKey(t) in overrides ? { ...t, done: overrides[taskKey(t)]! } : t)),
+    [tasks, overrides],
+  );
+
+  const onToggle = React.useCallback((task: StudentTask) => {
+    const key = taskKey(task);
+    const next = !task.done;
+    setOverrides((o) => ({ ...o, [key]: next })); // instant feedback
+    const call =
+      task.kind === "assigned"
+        ? toggleSubmissionAction(task.id, next)
+        : togglePersonalTodoAction(task.id, next);
+    // These actions resolve on success and throw on failure.
+    call
+      .then(() => {
+        // Drop the override once the server has it (a later refresh reflects it).
+        setOverrides((o) => {
+          const { [key]: _drop, ...rest } = o;
+          return rest;
+        });
+      })
+      .catch(() => {
+        setOverrides((o) => ({ ...o, [key]: !next })); // roll back
+        toast.error("บันทึกไม่สำเร็จ ลองอีกครั้ง");
+      });
+  }, []);
+
+  const total = view.length;
+  const done = view.filter((t) => t.done).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const sorted = React.useMemo(() => {
-    const arr = [...tasks];
+    const arr = [...view];
     if (sort === "due") {
       arr.sort((a, b) => {
         if (!a.dueAt && !b.dueAt) return 0;
@@ -188,7 +216,7 @@ export function StudentTodos({ tasks }: { tasks: StudentTask[] }) {
     // Unfinished first (stable — keeps the chosen order within each group).
     arr.sort((a, b) => Number(a.done) - Number(b.done));
     return arr;
-  }, [tasks, sort]);
+  }, [view, sort]);
 
   return (
     <div className="space-y-4">
@@ -231,7 +259,7 @@ export function StudentTodos({ tasks }: { tasks: StudentTask[] }) {
       ) : (
         <div className="space-y-3">
           {sorted.map((t) => (
-            <TaskItem key={`${t.kind}-${t.id}`} task={t} />
+            <TaskItem key={`${t.kind}-${t.id}`} task={t} onToggle={onToggle} />
           ))}
         </div>
       )}

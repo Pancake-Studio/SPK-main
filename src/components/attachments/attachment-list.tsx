@@ -72,27 +72,43 @@ export function AttachmentList({
       </div>
 
       <Dialog open={!!active} onOpenChange={(o) => !o && setActive(null)}>
-        <DialogContent className={cn("max-w-3xl", active && isImage(active.mime) && "sm:max-w-2xl")}>
+        <DialogContent
+          className={cn(
+            // never exceed the viewport (fixes image/PDF spilling off-screen);
+            // tighter padding to leave more room for the preview.
+            "w-[95vw] gap-2 overflow-hidden p-3 sm:p-4",
+            active && isPdf(active.mime) ? "max-w-4xl" : "max-w-3xl",
+          )}
+        >
           {active && (
             <>
-              <DialogHeader>
-                <DialogTitle className="truncate pr-8">{active.filename}</DialogTitle>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="truncate">{active.filename}</DialogTitle>
                 <DialogDescription>{humanSize(active.size)}</DialogDescription>
               </DialogHeader>
 
               {isImage(active.mime) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={fileHref(active.id)}
-                  alt={active.filename}
-                  className="mx-auto max-h-[72vh] w-auto rounded-md object-contain"
-                />
+                <div className="flex max-h-[75vh] justify-center overflow-auto">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={fileHref(active.id)}
+                    alt={active.filename}
+                    className="h-auto max-h-[75vh] w-auto max-w-full rounded-md object-contain"
+                  />
+                </div>
               ) : isPdf(active.mime) ? (
-                <iframe
-                  src={fileHref(active.id)}
-                  title={active.filename}
-                  className="h-[72vh] w-full rounded-md border border-border"
-                />
+                // Full PDF in the browser viewer (scroll through every page).
+                <object
+                  data={fileHref(active.id)}
+                  type="application/pdf"
+                  className="h-[80vh] max-h-[80vh] w-full rounded-md border border-border"
+                >
+                  <iframe
+                    src={fileHref(active.id)}
+                    title={active.filename}
+                    className="h-[80vh] w-full rounded-md border border-border"
+                  />
+                </object>
               ) : (
                 <p className="py-8 text-center text-sm text-muted-foreground">ดูตัวอย่างไฟล์นี้ไม่ได้</p>
               )}
@@ -102,7 +118,7 @@ export function AttachmentList({
                 download={active.filename}
                 className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
               >
-                <Download className="size-4" /> ดาวน์โหลด
+                <Download className="size-4" /> ดาวน์โหลด / เปิดเต็มหน้า
               </a>
             </>
           )}

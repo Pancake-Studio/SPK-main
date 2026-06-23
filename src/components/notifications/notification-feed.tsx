@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BellOff, CheckCheck } from "lucide-react";
+import { BellOff, CheckCheck, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
@@ -14,15 +14,63 @@ import type { ClientNotification } from "@/lib/types";
 import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
+  loadNotificationsAction,
 } from "@/server/actions/notification.actions";
 
-export function NotificationFeed({ items }: { items: ClientNotification[] }) {
+export function NotificationFeed({
+  initialItems,
+  initialHasMore,
+}: {
+  initialItems: ClientNotification[];
+  initialHasMore: boolean;
+}) {
   const router = useRouter();
-  const [list, setList] = React.useState(items);
+  const [list, setList] = React.useState(initialItems);
+  const [hasMore, setHasMore] = React.useState(initialHasMore);
+  const [loading, setLoading] = React.useState(false);
 
-  React.useEffect(() => setList(items), [items]);
+  // Re-sync when the server component re-renders with fresh first-page data.
+  React.useEffect(() => {
+    setList(initialItems);
+    setHasMore(initialHasMore);
+  }, [initialItems, initialHasMore]);
 
   const hasUnread = list.some((n) => !n.isRead);
+
+  // Load the next page; guarded so the observer can't fire it twice at once.
+  const loadingRef = React.useRef(false);
+  const loadMore = React.useCallback(async () => {
+    if (loadingRef.current || !hasMore) return;
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      const res = await loadNotificationsAction(list.length);
+      // De-dupe in case a realtime refresh shifted the window.
+      setList((prev) => {
+        const seen = new Set(prev.map((n) => n.id));
+        return [...prev, ...res.items.filter((n) => !seen.has(n.id))];
+      });
+      setHasMore(res.hasMore);
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  }, [hasMore, list.length]);
+
+  // Infinite scroll: load more when the sentinel scrolls into view.
+  const sentinelRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loadMore]);
 
   async function markAll() {
     setList((p) => p.map((n) => ({ ...n, isRead: true })));
@@ -85,6 +133,22 @@ export function NotificationFeed({ items }: { items: ClientNotification[] }) {
           );
         })}
       </Card>
+
+      {/* Sentinel + loading indicator for infinite scroll. */}
+      {hasMore && (
+        <div ref={sentinelRef} className="flex justify-center py-4">
+          {loading ? (
+            <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              กำลังโหลด…
+            </span>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={loadMore}>
+              โหลดเพิ่ม
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

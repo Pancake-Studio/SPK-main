@@ -14,6 +14,8 @@ export type ClientSwap = {
   id: string;
   status: string;
   reason: string | null;
+  /** Range label of the week this temporary swap applies to (null = legacy). */
+  weekLabel: string | null;
   createdAt: string;
   requesterId: string;
   targetTeacherId: string;

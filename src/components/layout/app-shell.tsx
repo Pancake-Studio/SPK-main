@@ -106,7 +106,7 @@ export function AppShell({ role, user, notifications, unread, children }: AppShe
           </div>
           <div className="flex-1" />
           <ThemeToggle />
-          <NotificationBell initialItems={notifications} initialUnread={unread} />
+          <NotificationBell role={role} initialItems={notifications} initialUnread={unread} />
           <div className="ml-1">
             <UserMenu name={user.name} email={user.email} role={role} avatarUrl={user.avatarUrl} />
           </div>

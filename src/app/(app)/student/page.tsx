@@ -1,9 +1,7 @@
-import { CalendarDays, School, Clock } from "lucide-react";
+import { School } from "lucide-react";
 import { requireStudentProfile } from "@/lib/auth";
-import {
-  getClassSchedule,
-  getClassBrief,
-} from "@/server/services/schedule.service";
+import { getClassBrief } from "@/server/services/schedule.service";
+import { getClassEffective } from "@/server/services/effective-schedule.service";
 import { getEffectiveSlots } from "@/server/services/bell-schedule.service";
 import { getWeekSwaps } from "@/server/services/day-swap.service";
 import { PageHeader } from "@/components/page-header";
@@ -12,24 +10,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NowNext } from "@/components/timetable/now-next";
 import { TodaySchedule } from "@/components/timetable/today-schedule";
 import { DaySwapBanner } from "@/components/timetable/day-swap-banner";
-import { dayKeyForDate, currentPeriodNo, slotsForDay } from "@/lib/timetable";
+import { dayKeyForDate, currentPeriodNo } from "@/lib/timetable";
 import { effectiveDayFor, toIsoDate } from "@/lib/day-swap";
 
 export default async function StudentDashboard() {
   const { user, student } = await requireStudentProfile();
-  const [slots, klass] = await Promise.all([
-    getClassSchedule(student.classId),
+  const now = new Date();
+  const todayIso = toIsoDate(now);
+  const [{ slots }, klass] = await Promise.all([
+    getClassEffective(student.classId, todayIso),
     getClassBrief(student.classId),
   ]);
 
-  const now = new Date();
-  const todayIso = toIsoDate(now);
   const today = dayKeyForDate(now);
   const weekSwaps = await getWeekSwaps(todayIso);
   const lessonDay = effectiveDayFor(now, weekSwaps);
   const bellSlots = await getEffectiveSlots(todayIso);
   const curPeriod = currentPeriodNo(now, bellSlots);
-  const todayCount = lessonDay ? slotsForDay(slots, lessonDay).length : 0;
   const dateLabel = new Intl.DateTimeFormat("th-TH", {
     weekday: "long",
     day: "numeric",
@@ -44,13 +41,6 @@ export default async function StudentDashboard() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="ห้องเรียน" value={klass?.className ?? "-"} icon={School} accent="primary" />
-        <StatCard label="คาบเรียนวันนี้" value={todayCount} icon={CalendarDays} accent="info" />
-        <StatCard
-          label="คาบเรียนต่อสัปดาห์"
-          value={slots.length}
-          icon={Clock}
-          accent="gold"
-        />
       </div>
 
       <div className="mt-6">

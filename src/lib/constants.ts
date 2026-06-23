@@ -65,6 +65,9 @@ export const DAY_KEYS = DAYS.map((d) => d.key) as DayKey[];
 // class-period number we allow on a schedule slot (validation bound).
 export const MAX_PERIOD_NUMBER = 20;
 
+/** Notifications infinite-scroll page size (shared by server + client). */
+export const NOTIFICATIONS_PAGE_SIZE = 10;
+
 /** Auth/session config. */
 // New name for the Auth.js (NextAuth v5) JWT cookie. Deliberately *not*
 // "spk_session" — the old custom-session system used that name, and a leftover

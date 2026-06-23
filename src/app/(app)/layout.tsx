@@ -14,7 +14,7 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   const [rows, unread] = await Promise.all([
-    getNotifications(user.id, { take: 20 }),
+    getNotifications(user.id, { take: 10 }),
     getUnreadCount(user.id),
   ]);
 
