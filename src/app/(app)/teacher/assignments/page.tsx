@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireTeacherProfile } from "@/lib/auth";
 import {
   listTeacherAssignments,
@@ -7,15 +8,23 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { AssignmentCreateDialog } from "@/components/assignments/assignment-create-dialog";
 import { TeacherAssignmentsBoard } from "@/components/assignments/teacher-assignments-board";
+import { cn } from "@/lib/utils";
 
 export const metadata = { title: "มอบหมายงาน" };
 
-export default async function TeacherAssignmentsPage() {
+export default async function TeacherAssignmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ classId?: string }> | { classId?: string };
+}) {
   const { teacher } = await requireTeacherProfile();
   const [assignments, classes] = await Promise.all([
     listTeacherAssignments(teacher.id),
     teacherClasses(teacher.id),
   ]);
+
+  const params = await searchParams;
+  const selectedClassId = params.classId ?? classes[0]?.id ?? "";
 
   const studentsByClass: Record<
     string,
@@ -28,15 +37,41 @@ export default async function TeacherAssignmentsPage() {
   );
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="มอบหมายงาน"
         description="สร้างงาน/การบ้านให้นักเรียน แนบรูป/PDF กำหนดส่ง และติดตามความคืบหน้าแยกตามห้อง"
       >
-        <AssignmentCreateDialog classes={classes} studentsByClass={studentsByClass} />
+        <AssignmentCreateDialog
+          classes={classes}
+          studentsByClass={studentsByClass}
+          defaultClassId={selectedClassId}
+        />
       </PageHeader>
 
-      <TeacherAssignmentsBoard assignments={assignments} />
+      {classes.length > 1 && (
+        <nav className="flex flex-wrap gap-2">
+          {classes.map((c) => {
+            const active = c.id === selectedClassId;
+            return (
+              <Link
+                key={c.id}
+                href={`/teacher/assignments?classId=${c.id}`}
+                className={cn(
+                  "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+                  active
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-card text-foreground hover:bg-muted",
+                )}
+              >
+                {c.className}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
+
+      <TeacherAssignmentsBoard assignments={assignments} classId={selectedClassId} />
     </div>
   );
 }

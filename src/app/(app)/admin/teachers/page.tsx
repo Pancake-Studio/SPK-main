@@ -13,7 +13,11 @@ export const metadata = { title: "จัดการครู" };
 export default async function AdminTeachersPage() {
   await requireAdmin();
   const [teachers, classes] = await Promise.all([listTeachers(), listClasses()]);
-  const classOptions: Option[] = classes.map((c) => ({ value: c.id, label: c.className }));
+  // Advisors are assigned to the base class group only (e.g. M.4/3), never to
+  // the dotted sub-rooms (M.4/3.1, M.4/3.2).
+  const classOptions: Option[] = classes
+    .filter((c) => !c.className.includes("."))
+    .map((c) => ({ value: c.id, label: c.className }));
 
   return (
     <div>

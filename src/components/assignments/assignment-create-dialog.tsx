@@ -30,9 +30,11 @@ type StudentOpt = { id: string; name: string; title: string | null; rollNumber: 
 export function AssignmentCreateDialog({
   classes,
   studentsByClass,
+  defaultClassId,
 }: {
   classes: { id: string; className: string }[];
   studentsByClass: Record<string, StudentOpt[]>;
+  defaultClassId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -40,7 +42,7 @@ export function AssignmentCreateDialog({
 
   const [title, setTitle] = React.useState("");
   const [details, setDetails] = React.useState("");
-  const [classId, setClassId] = React.useState(classes[0]?.id ?? "");
+  const [classId, setClassId] = React.useState(defaultClassId ?? classes[0]?.id ?? "");
   const [dueAt, setDueAt] = React.useState("");
   const [mode, setMode] = React.useState<"all" | "some">("all");
   const [picked, setPicked] = React.useState<Set<string>>(new Set());

@@ -129,40 +129,30 @@ function AssignmentCard({ a }: { a: TeacherAssignmentView }) {
   );
 }
 
-export function TeacherAssignmentsBoard({ assignments }: { assignments: TeacherAssignmentView[] }) {
-  // Group by class for an orderly, per-classroom layout.
-  const groups = React.useMemo(() => {
-    const map = new Map<string, TeacherAssignmentView[]>();
-    for (const a of assignments) {
-      const list = map.get(a.className) ?? [];
-      list.push(a);
-      map.set(a.className, list);
-    }
-    return [...map.entries()].sort((x, y) => x[0].localeCompare(y[0]));
-  }, [assignments]);
+export function TeacherAssignmentsBoard({
+  assignments,
+  classId,
+}: {
+  assignments: TeacherAssignmentView[];
+  classId?: string;
+}) {
+  const filtered = React.useMemo(
+    () => (classId ? assignments.filter((a) => a.classId === classId) : assignments),
+    [assignments, classId],
+  );
 
-  if (assignments.length === 0) {
+  if (filtered.length === 0) {
     return (
       <Card className="p-10 text-center text-muted-foreground">
-        ยังไม่มีงานที่มอบหมาย — กด “มอบหมายงาน” เพื่อเริ่ม
+        ยังไม่มีงานที่มอบหมายในห้องนี้ — กด “มอบหมายงาน” เพื่อเริ่ม
       </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {groups.map(([className, list]) => (
-        <section key={className}>
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-primary">{className}</span>
-            <span className="text-xs font-normal text-muted-foreground">{list.length} งาน</span>
-          </h2>
-          <div className="space-y-3">
-            {list.map((a) => (
-              <AssignmentCard key={a.id} a={a} />
-            ))}
-          </div>
-        </section>
+    <div className="space-y-3">
+      {filtered.map((a) => (
+        <AssignmentCard key={a.id} a={a} />
       ))}
     </div>
   );

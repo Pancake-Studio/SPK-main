@@ -187,6 +187,33 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 - **ตรวจสอบ (ไม่แตะข้อมูลจริง)**: `tsc` ✅ · `next build` (35 routes, +/admin/admins, +/teacher/{subjects,schedule/manage,advisory}) ✅ · unit-test validations 8 เคส (blank password→undefined, รหัสสั้นยังถูกปฏิเสธ, ownSchedule ไม่มี teacherId ฯลฯ) + นับ DB read-only ผ่าน ✅ · ข้อมูลครบ: นักเรียน 2 / ครู 31 / วิชา 123 / ห้อง 21 / ตาราง 484 · อีเมลแอดมิน = admin@suntisuk.ac.th ✅
 - **หมายเหตุ**: ไม่ได้รัน create/update จริงที่เขียนข้อมูล/แจ้งเตือนผู้ใช้จริง — เทสต์เฉพาะ schema/build + อ่าน DB · **ต้อง restart dev server** (Prisma client มีฟิลด์ใหม่ ownerTeacherId/advisorClassId)
 
+### 2026-06-23 — แยกหน้ามอบหมายงานของครูตามห้องเรียน
+- **คำสั่งผู้ใช้**: หน้ามอบหมายงานของครูต้องแยกเป็น page ตามห้องเรียน
+- **แก้ไข**:
+  - [src/app/(app)/teacher/assignments/page.tsx](src/app/(app)/teacher/assignments/page.tsx): รับ `searchParams.classId` แสดงแท็บเลือกห้อง และส่ง `selectedClassId` ให้ board + dialog
+  - [src/components/assignments/teacher-assignments-board.tsx](src/components/assignments/teacher-assignments-board.tsx): รับ prop `classId` กรองแสดงเฉพาะงานของห้องที่เลือก
+  - [src/components/assignments/assignment-create-dialog.tsx](src/components/assignments/assignment-create-dialog.tsx): รับ `defaultClassId` เพื่อให้ dialog สร้างงาน default เป็นห้องที่กำลังดูอยู่
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
+### 2026-06-23 — ครูที่ปรึกษาเลือกได้แค่ห้องกลุ่มหลัก (ไม่แยก /3.1 /3.2)
+- **คำสั่งผู้ใช้**: ครูที่ปรึกษาไม่แยกตามห้องย่อย แต่เป็นที่ปรึกษาทั้งชั้น เช่น `ม.4/3` ทั้งหมด
+- **แก้ไข**: [src/app/(app)/admin/teachers/page.tsx](src/app/(app)/admin/teachers/page.tsx) — filter รายชื่อห้องใน dropdown เลือกครูที่ปรึกษา ให้แสดงเฉพาะห้องที่ไม่มี `.x` (ห้องกลุ่มหลัก) เท่านั้น
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
+### 2026-06-23 — ป้องกันการซูมหน้าเว็บ (viewport)
+- **คำสั่งผู้ใช้**: ไม่ต้องการให้ผู้ใช้ซูมหน้าเว็บได้ (mobile/PWA)
+- **แก้ไข**: [src/app/layout.tsx](src/app/layout.tsx) — เพิ่ม `width: "device-width"`, `initialScale: 1`, `maximumScale: 1`, `userScalable: false` ใน `viewport`
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅
+
+### 2026-06-23 — ห้องเรียนสามารถมีครูที่ปรึกษาได้หลายคน
+- **ปัญหา/คำสั่งผู้ใช้**: ต้องการให้ห้องเรียนหนึ่งห้องมีครูที่ปรึกษาได้มากกว่า 1 คน (เดิม schema บังคับ `@unique` บน `Teacher.advisorClassId` ทำให้ห้องละ 1 คน)
+- **แก้ไข**:
+  - [prisma/schema.prisma](prisma/schema.prisma): ลบ `@unique` ออกจาก `Teacher.advisorClassId` และเปลี่ยน `Class.advisor` เป็น `Class.advisors` (1 ห้อง → หลายครู)
+  - รัน `npx prisma db push` เพื่อ sync schema กับ DB จริง (ไม่ทำลายข้อมูล)
+  - [src/server/services/admin.service.ts](src/server/services/admin.service.ts): ลบ `assertAdvisorFree()` และการเรียกใช้ใน `createTeacher`/`updateTeacher`
+  - [src/server/actions/admin.actions.ts](src/server/actions/admin.actions.ts): ลบ `advisorMessage()` และการอ้างอิงใน error handler
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ผ่าน ✅ · หมายเหตุ: UI ฟอร์มครูยังเลือกได้ครูละ 1 ห้องที่ปรึกษา แต่ห้องเดียวกันรับได้หลายคนแล้ว
+
 ### 2026-06-23 — ตารางสอนห้องกลุ่ม (/3) auto-expand ไปยังห้องย่อย (/3.1, /3.2)
 - **เหตุผล/คำสั่งผู้ใช้**: ห้องเรียนกลุ่ม เช่น `ม.5/3` หมายถึงนักเรียนทุกห้องย่อย (`ม.5/3.1`, `ม.5/3.2` ...) เรียนรวมกัน ต้องการให้ระบบ auto-expand คาบของห้องกลุ่มไปยังทุกห้องย่อยโดยอัตโนมัติ
 - **แก้ไข**:
