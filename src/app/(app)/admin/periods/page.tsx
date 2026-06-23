@@ -11,9 +11,9 @@ import { DaySwapManager } from "@/components/admin/day-swap-manager";
 
 export const metadata = { title: "เวลาเรียน / คาบเรียน" };
 
-/** Today's date in YYYY-MM-DD (server-local). */
+/** Today's date in YYYY-MM-DD (Asia/Bangkok). */
 function todayIso() {
-  return new Date().toLocaleDateString("en-CA");
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
 }
 
 export default async function AdminPeriodsPage() {

@@ -37,6 +37,7 @@ export default async function TeacherDashboard() {
   const pendingIncoming = swaps.incoming.filter((s) => s.status === SWAP_STATUS.PENDING);
   const pendingOutgoing = swaps.outgoing.filter((s) => s.status === SWAP_STATUS.PENDING);
   const dateLabel = new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
     weekday: "long",
     day: "numeric",
     month: "long",

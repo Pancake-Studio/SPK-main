@@ -36,7 +36,7 @@ function whenLabel(at: string): string {
   const d = new Date(at);
   return isNaN(d.getTime())
     ? ""
-    : ` · เมื่อ ${d.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`;
+    : ` · เมื่อ ${d.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short" })}`;
 }
 
 /** Apply week swaps to a flat slot list. Each end that is present in the list is

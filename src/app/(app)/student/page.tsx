@@ -28,6 +28,7 @@ export default async function StudentDashboard() {
   const bellSlots = await getEffectiveSlots(todayIso);
   const curPeriod = currentPeriodNo(now, bellSlots);
   const dateLabel = new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
     weekday: "long",
     day: "numeric",
     month: "long",

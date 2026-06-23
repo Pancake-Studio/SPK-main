@@ -38,6 +38,8 @@ export type BellScheduleData = {
 
 /* --------------------------------- time ---------------------------------- */
 
+import { bangkokDate, bangkokMinutesSinceMidnight } from "@/lib/timezone";
+
 /** "HH:MM" → minutes since midnight. */
 export function minutesOf(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -94,18 +96,18 @@ export function classSlotByPeriod(slots: BellSlotData[]): Map<number, BellSlotDa
   return m;
 }
 
-/** The slot active at `date`'s wall-clock time, or null outside school hours. */
+/** The slot active at Bangkok wall-clock time, or null outside school hours. */
 export function currentSlot(slots: BellSlotData[], date: Date): BellSlotData | null {
-  const now = date.getHours() * 60 + date.getMinutes();
+  const now = bangkokMinutesSinceMidnight(date);
   for (const s of orderedSlots(slots)) {
     if (now >= minutesOf(s.startTime) && now < minutesOf(s.endTime)) return s;
   }
   return null;
 }
 
-/** The next CLASS slot starting strictly after `date`, or null. */
+/** The next CLASS slot starting strictly after Bangkok `date`, or null. */
 export function nextClassSlot(slots: BellSlotData[], date: Date): BellSlotData | null {
-  const now = date.getHours() * 60 + date.getMinutes();
+  const now = bangkokMinutesSinceMidnight(date);
   for (const s of classSlots(slots)) {
     if (minutesOf(s.startTime) > now) return s;
   }

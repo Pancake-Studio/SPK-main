@@ -1,4 +1,5 @@
 import { DAYS, DAY_KEYS, type DayKey } from "@/lib/constants";
+import { bangkokDate } from "@/lib/timezone";
 import {
   DEFAULT_BELL_SLOTS,
   classSlots,
@@ -36,14 +37,14 @@ export type SlotMark = {
   tooltip?: string;
 };
 
-/** Map a JS Date to our day key, or null on weekends. */
+/** Map a JS Date to our Bangkok day key, or null on weekends. */
 export function dayKeyForDate(date = new Date()): DayKey | null {
-  const idx = date.getDay(); // 0 Sun … 6 Sat
+  const idx = bangkokDate(date).getDay(); // 0 Sun … 6 Sat
   if (idx === 0 || idx === 6) return null;
   return DAY_KEYS[idx - 1] ?? null;
 }
 
-/** The class-period number active *right now*, or null if outside class hours.
+/** The Bangkok class-period number active *right now*, or null if outside class hours.
  *  Pass the effective bell slots for the day; defaults to the standard schedule. */
 export function currentPeriodNo(
   date = new Date(),

@@ -3,6 +3,7 @@
 // the schedule pages, and the server service.
 
 import { DAY_KEYS, DAYS, type DayKey } from "@/lib/constants";
+import { BANGKOK_TZ, bangkokDate } from "@/lib/timezone";
 
 export type DaySwapData = {
   id: string;
@@ -12,22 +13,23 @@ export type DaySwapData = {
   note: string | null;
 };
 
-/** Local "YYYY-MM-DD" (no UTC shift) from a Date. */
+/** Bangkok "YYYY-MM-DD" from a Date. */
 export function toIsoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const b = bangkokDate(d);
+  const y = b.getFullYear();
+  const m = String(b.getMonth() + 1).padStart(2, "0");
+  const day = String(b.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
-/** Parse "YYYY-MM-DD" to a local Date at midnight. */
+/** Parse "YYYY-MM-DD" to a Bangkok midnight Date. */
 export function fromIsoDate(iso: string): Date {
-  return new Date(`${iso}T00:00:00`);
+  return bangkokDate(new Date(`${iso}T00:00:00`));
 }
 
-/** Monday (ISO date) of the week containing `date`. */
+/** Monday (ISO date) of the Bangkok week containing `date`. */
 export function weekStartOf(date: Date | string): string {
-  const d = typeof date === "string" ? fromIsoDate(date) : new Date(date);
+  const d = bangkokDate(typeof date === "string" ? new Date(date) : date);
   const dow = d.getDay(); // 0 Sun … 6 Sat
   const toMonday = dow === 0 ? -6 : 1 - dow;
   d.setDate(d.getDate() + toMonday);
@@ -35,9 +37,9 @@ export function weekStartOf(date: Date | string): string {
   return toIsoDate(d);
 }
 
-/** The DayKey (MON..FRI) for a date, or null on weekends. */
+/** The DayKey (MON..FRI) for a Bangkok date, or null on weekends. */
 export function weekdayOf(date: Date | string): DayKey | null {
-  const d = typeof date === "string" ? fromIsoDate(date) : date;
+  const d = bangkokDate(typeof date === "string" ? new Date(date) : date);
   const idx = d.getDay();
   if (idx === 0 || idx === 6) return null;
   return DAY_KEYS[idx - 1] ?? null;
@@ -80,6 +82,7 @@ export function weekRangeLabel(weekStart: string): string {
   const mon = fromIsoDate(weekStart);
   const fri = fromIsoDate(weekStart);
   fri.setDate(fri.getDate() + 4);
-  const fmt = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("th-TH", { timeZone: BANGKOK_TZ, day: "numeric", month: "short" });
   return `${fmt(mon)} – ${fmt(fri)}`;
 }

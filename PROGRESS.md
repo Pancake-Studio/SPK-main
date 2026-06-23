@@ -145,6 +145,21 @@ npm run db:studio           # เปิด Prisma Studio ดู/แก้ข้�
 
 ## 6. Session Log (บันทึกทุกครั้งที่ทำงาน)
 
+### 2026-06-23 — แก้เวลาบน Vercel ผิด (timezone drift) ให้เป็น Asia/Bangkok
+- **โจทย์**: Deploy บน Vercel แล้ว "วันนี้" / "คาบปัจจุบัน" ไม่ตรง เพราะ server รัน UTC แต่แอปคิดเป็น local time
+- **แก้ไข**: เพิ่ม helper `bangkokDate()` + `bangkokMinutesSinceMidnight()` ใน [lib/timezone.ts](src/lib/timezone.ts) โดยใช้ `Intl.DateTimeFormat` ดึง wall-clock ของ `Asia/Bangkok` แล้วสร้าง Date ที่ local getters อ่านเป็นเวลาไทย
+- **อัปเดตฟังก์ชันที่ใช้เวลาปัจจุบัน**:
+  - [lib/day-swap.ts](src/lib/day-swap.ts): `toIsoDate`, `fromIsoDate`, `weekStartOf`, `weekdayOf`, `weekRangeLabel` → คำนวณตาม Bangkok
+  - [lib/timetable.ts](src/lib/timetable.ts): `dayKeyForDate`, `currentPeriodNo` → Bangkok
+  - [lib/bell-schedule.ts](src/lib/bell-schedule.ts): `currentSlot`, `nextClassSlot` → ใช้ `bangkokMinutesSinceMidnight`
+  - [lib/weekly-overlay.ts](src/lib/weekly-overlay.ts): tooltip วันที่ swap ใส่ `timeZone: Asia/Bangkok`
+- **อัปเดตหน้าที่ render วันที่บน server**:
+  - [app/(app)/student/page.tsx](src/app/(app)/student/page.tsx) `dateLabel`
+  - [app/(app)/teacher/page.tsx](src/app/(app)/teacher/page.tsx) `dateLabel`
+  - [app/(app)/admin/periods/page.tsx](src/app/(app)/admin/periods/page.tsx) `todayIso`
+- **ผล**: Server คิด "วันนี้" / "คาบปัจจุบัน" / "weekStart" ตามเวลาไทยเหมือน client ในไทย
+- **ตรวจสอบ**: `npx tsc --noEmit` ✅ · `npm run build` ✅ (38 routes)
+
 ### 2026-06-23 — ย้ายฐานข้อมูลจาก SQLite ไป PostgreSQL (Neon) + migrate ข้อมูลจริง
 - **โจทย์**: เปลี่ยน `DATABASE_URL` เป็น PostgreSQL บน Neon และย้ายข้อมูลทั้งหมดจาก `prisma/dev.db`
 - **Config**: อัปเดต `.env` ใช้ `DATABASE_URL` ของ Neon (pooled connection) · เปลี่ยน `provider` ใน `prisma/schema.prisma` จาก `sqlite` → `postgresql` · `npx prisma db push` สร้าง schema บน Neon สำเร็จ
