@@ -34,7 +34,7 @@ function SidebarContent({ role, onNavigate }: { role: string; onNavigate?: () =>
         <SidebarNav items={navForRole(role)} onNavigate={onNavigate} />
       </div>
       <div className="border-t border-sidebar-border px-6 py-4">
-        <p className="text-xs text-muted-foreground">SPK Platform · v0.1</p>
+        <p className="text-xs text-muted-foreground">School Productivity Kits · v0.1</p>
       </div>
     </div>
   );

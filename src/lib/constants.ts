@@ -1,6 +1,6 @@
 /** Branding */
-export const APP_NAME = "SPK Platform";
-export const SCHOOL_NAME = "SPK School";
+export const APP_NAME = "School Productivity Kits";
+export const SCHOOL_NAME = "โรงเรียนสันติสุขพิทยาคม";
 export const SCHOOL_SHORT = "SPK";
 
 /**

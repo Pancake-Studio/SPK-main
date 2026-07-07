@@ -1,4 +1,4 @@
-/* SPK Platform service worker — install + Web Push + click handling */
+/* School Productivity Kits service worker — install + Web Push + click handling */
 /* sw-version: 5 — no clients.claim(), explicit RSC pass-through */
 
 self.addEventListener("install", (event) => {
@@ -48,12 +48,12 @@ self.addEventListener("push", (event) => {
   } catch (parseErr) {
     console.error("[sw] push payload parse error:", parseErr);
     payload = {
-      title: "SPK Platform",
+      title: "School Productivity Kits",
       message: event.data ? event.data.text() : "New notification",
     };
   }
 
-  const title = payload.title || "SPK Platform";
+  const title = payload.title || "School Productivity Kits";
   const options = {
     body: payload.message || "",
     icon: payload.icon || "/icon-192-ro.png",
@@ -71,7 +71,7 @@ self.addEventListener("push", (event) => {
       .catch((err) => {
         console.error("[sw] showNotification failed:", err);
         // Fallback: try with minimal options (no badge/icon that might be invalid)
-        return self.registration.showNotification("SPK Platform", {
+        return self.registration.showNotification("School Productivity Kits", {
           body: payload.message || "You have a new notification",
         });
       }),

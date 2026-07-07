@@ -1,4 +1,4 @@
-// SPK School Platform — Prisma schema
+// School Productivity Kits — Prisma schema
 //
 // Local dev uses SQLite (zero-setup, browse with `npm run db:studio`).
 // For production PostgreSQL, change `provider` below to "postgresql" and point

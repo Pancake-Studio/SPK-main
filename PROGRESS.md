@@ -1,6 +1,6 @@
 # ทุกการทำงานต้องบันทึกลงในนี้
 
-# SPK School Platform — บันทึกความคืบหน้า (Progress Log)
+# School Productivity Kits — บันทึกความคืบหน้า (Progress Log)
 
 > อัปเดตล่าสุด: 2026-06-23 · สถานะ: **Phase 1 เสร็จสมบูรณ์** — ผ่าน `tsc`, `next build`, และ smoke-test ทุกหน้า/ทุกบทบาท ✅
 

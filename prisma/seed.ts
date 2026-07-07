@@ -9,7 +9,7 @@ const DEMO_PASSWORD = "password123";
 const ADMIN_PASSWORD = "admin123";
 
 async function main() {
-  console.log("🌱 Seeding SPK School Platform…");
+  console.log("🌱 Seeding School Productivity Kits…");
 
   // Clean slate (children first to satisfy FKs).
   await db.swapLog.deleteMany();
@@ -174,7 +174,7 @@ async function main() {
   await db.announcement.createMany({
     data: [
       {
-        title: "ยินดีต้อนรับสู่ระบบ SPK Platform",
+        title: "ยินดีต้อนรับสู่ระบบ School Productivity Kits",
         body: "ระบบจัดการตารางเรียนและการแลกคาบสอนพร้อมใช้งานแล้ว ครูและนักเรียนสามารถเข้าสู่ระบบเพื่อดูตารางของตนเองได้",
         audience: "ALL",
         isUrgent: false,
