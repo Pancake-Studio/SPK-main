@@ -81,6 +81,7 @@
     "wrangler": "^4.126.0"
   },
   "overrides": {
-    "@types/minimatch": "5.1.2"
+    "@types/minimatch": "5.1.2",
+    "es-toolkit": "1.50.0"
   }
 }
