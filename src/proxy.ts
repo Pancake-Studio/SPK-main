@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/constants";
 
 /**
@@ -26,10 +26,13 @@ export function proxy(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return Response.redirect(url, 307);
   }
 
-  return NextResponse.next();
+  // `NextResponse` pulls the complete `next/server` export into this edge
+  // bundle, including the unused ImageResponse/resvg WASM implementation.
+  // This header is the documented middleware pass-through response contract.
+  return new Response(null, { headers: { "x-middleware-next": "1" } });
 }
 
 export const config = {
