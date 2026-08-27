@@ -34,7 +34,15 @@ const DEFAULT_PASSWORD = "password123";
 
 /* ---------------------------------- Admins ------------------------------ */
 
-export function listAdmins() {
+export type AdminListItem = {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  createdAt: Date;
+};
+
+export function listAdmins(): Promise<AdminListItem[]> {
   return db.user.findMany({
     where: { role: ROLES.ADMIN },
     select: { id: true, name: true, email: true, isActive: true, createdAt: true },

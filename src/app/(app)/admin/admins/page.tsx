@@ -1,5 +1,8 @@
 import { requireAdmin } from "@/lib/auth";
-import { listAdmins } from "@/server/services/admin.service";
+import {
+  listAdmins,
+  type AdminListItem,
+} from "@/server/services/admin.service";
 import { PageHeader } from "@/components/page-header";
 import { AddAdminDialog } from "@/components/admin/dialogs/add-admin-dialog";
 import { AdminUserTable, type AdminRow } from "@/components/admin/admin-user-table";
@@ -17,7 +20,7 @@ export default async function AdminAdminsPage() {
       </PageHeader>
 
       <AdminUserTable
-        admins={admins.map((a): AdminRow => ({
+        admins={admins.map((a: AdminListItem): AdminRow => ({
           id: a.id,
           name: a.name,
           email: a.email,
