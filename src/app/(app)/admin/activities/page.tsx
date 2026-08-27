@@ -5,11 +5,18 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { AddActivityDialog, ActivityTable, type ActivityRow } from "@/components/admin/activity-manager";
 
-export const metadata = { title: "คาบกิจกรรม" };
+type ActivityPeriod = {
+    id: string;
+    day: string;
+    period: number;
+    label: string;
+    colorHex: string | null;
+}
 
+export const metadata = { title: "คาบกิจกรรม" };
 export default async function AdminActivitiesPage() {
   await requireAdmin();
-  const activities = await listActivityPeriods();
+  const activities: ActivityPeriod[] = await listActivityPeriods();
   const rows: ActivityRow[] = activities.map((a) => ({
     id: a.id,
     day: a.day,
