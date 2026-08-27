@@ -14,7 +14,7 @@ import type { NextConfig } from "next";
  * Add any other host you serve the app from (LAN IP, localhost).
  */
 const ORIGINS = [
-  "spk-virid.vercel.app",
+  "spk.fe-grp.com",
 ];
 
 /**
@@ -24,6 +24,7 @@ const ORIGINS = [
  * fails with WorkerError) and would overwrite the hand-written public/sw.js.
  */
 const nextConfig: NextConfig = {
+  output: 'standalone',
   allowedDevOrigins: ["nallyz-dev.fe-grp.com", "172.24.45.38"],
   experimental: {
     serverActions: {
