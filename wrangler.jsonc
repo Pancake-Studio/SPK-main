@@ -1,0 +1,55 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Cloudflare Worker name.
+  // WORKER_SELF_REFERENCE below must use the exact same name.
+  "name": "school-productivity-kits",
+
+  // OpenNext generates this file during `opennextjs-cloudflare build`.
+  "main": ".open-next/worker.js",
+
+  "compatibility_date": "2026-08-27",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+
+  // Keep environment variables that you manage in the Cloudflare Dashboard.
+  // Secrets should be stored as Cloudflare Secrets, not in this file.
+  "keep_vars": true,
+
+  // Keep the production app off the default *.workers.dev URL.
+  // Continue managing your existing Custom Domains/Routes in the Dashboard.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // OpenNext needs a service binding back to this same Worker.
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "school-productivity-kits"
+    }
+  ],
+
+  // Existing OpenNext R2 incremental-cache bucket seen in your deploy log.
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "spk-v2-opennext-cache"
+    }
+  ],
+
+  // Enables Next.js image optimization through Cloudflare Images binding.
+  "images": {
+    "binding": "IMAGES"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}
