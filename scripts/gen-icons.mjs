@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const pub = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
+/** @param {string} f */
 const read = (f) => readFile(join(pub, f));
+/** @param {string} f */
 const out = (f) => join(pub, f);
 
 const jobs = [

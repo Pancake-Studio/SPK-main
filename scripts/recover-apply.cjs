@@ -11,8 +11,14 @@ const db = new PrismaClient();
 
 const CUID = /^c[a-z0-9]{24}$/;
 const DAYS = new Set(["MON", "TUE", "WED", "THU", "FRI"]);
+/** @type {Record<number, number>} */
 const SIZES = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 8 };
 
+/**
+ * @param {Buffer} buf
+ * @param {number} off
+ * @param {number} serial
+ */
 function readInt(buf, off, serial) {
   if (serial === 8) return 0;
   if (serial === 9) return 1;
@@ -23,6 +29,14 @@ function readInt(buf, off, serial) {
   return v;
 }
 
+/**
+ * @param {string} file
+ * @param {{
+ *   classes: Map<string, { className: string }>,
+ *   subjects: Map<string, { subjectCode: string, subjectName: string }>,
+ *   teachers: Map<string, string>
+ * }} known
+ */
 function scan(file, known) {
   const buf = fs.readFileSync(file);
   const found = new Map();

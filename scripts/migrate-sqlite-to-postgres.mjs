@@ -13,6 +13,7 @@ import { PrismaClient as SqliteClient } from "@prisma/sqlite-client";
 const sqlite = new SqliteClient({ log: ["error"] });
 const pg = new PgClient({ log: ["error"] });
 
+/** @param {string} msg */
 function log(msg) {
   // eslint-disable-next-line no-console
   console.log(`[migrate] ${msg}`);

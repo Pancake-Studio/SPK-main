@@ -7,11 +7,16 @@ const db = new PrismaClient();
 const GROUPS = require("./split-groups.cjs");
 
 const TITLES = ["เด็กชาย", "เด็กหญิง", "นางสาว", "นาง", "นาย"];
+/** @param {string} s */
 function norm(s) {
   let x = (s || "").trim();
   for (const t of TITLES) if (x.startsWith(t)) { x = x.slice(t.length); break; }
   return x.replace(/\s+/g, "");
 }
+/**
+ * @param {string} a
+ * @param {string} b
+ */
 function lev(a, b) {
   const m = a.length, n = b.length;
   const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);

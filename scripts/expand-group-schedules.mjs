@@ -4,6 +4,7 @@ const db = new PrismaClient({
   datasources: { db: { url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" } },
 });
 
+/** @param {string} name */
 function normalize(name) {
   return name.toUpperCase().trim();
 }

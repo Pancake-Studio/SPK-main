@@ -4,6 +4,7 @@ const db = new PrismaClient({
   datasources: { db: { url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" } },
 });
 
+/** @param {string} name */
 function normalize(name) {
   return name.toUpperCase().trim();
 }
@@ -13,6 +14,7 @@ async function main() {
   const byName = new Map(classes.map((c) => [normalize(c.className), c]));
 
   // Find base groups that have dotted sub-rooms (e.g. M.5/3 -> M.5/3.1, M.5/3.2).
+  /** @type {string[]} */
   const baseGroupIds = [];
   for (const c of classes) {
     const name = normalize(c.className);

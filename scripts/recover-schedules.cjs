@@ -14,8 +14,14 @@ const db = new PrismaClient();
 const CUID = /^c[a-z0-9]{24}$/;
 const DAYS = new Set(["MON", "TUE", "WED", "THU", "FRI"]);
 
+/**
+ * @param {Buffer} buf
+ * @param {number} off
+ * @param {number} serial
+ */
 function readInt(buf, off, serial) {
   // SQLite serial types for ints.
+  /** @type {Record<number, number>} */
   const sizes = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 8 };
   if (serial === 8) return 0;
   if (serial === 9) return 1;
@@ -26,8 +32,23 @@ function readInt(buf, off, serial) {
   return v;
 }
 
+/**
+ * @param {string} file
+ * @param {{
+ *   classes: Map<string, string>,
+ *   subjects: Map<string, string>,
+ *   teachers: Map<string, string>
+ * }} known
+ */
 function scan(file, known) {
   const buf = fs.readFileSync(file);
+  /** @type {Map<string, {
+   *   className: string,
+   *   day: string,
+   *   period: number,
+   *   subject: string | undefined,
+   *   teacher: string | undefined
+   * }>} */
   const found = new Map(); // key className|day|period -> {..}
   const sig = Buffer.from([0x3f, 0x3f, 0x3f, 0x3f, 0x13]);
   let from = 0;
@@ -82,6 +103,7 @@ function scan(file, known) {
     const recoverable = [...found.values()].filter((r) => !existingKeys.has(`${r.className}|${r.day}|${r.period}`));
     console.log(`\n===== ${file} =====`);
     console.log(`พบ record Schedule ที่ map ได้ทั้งหมด: ${found.size} · ที่ไม่อยู่ใน DB ปัจจุบัน (น่าจะคือที่ถูกลบ): ${recoverable.length}`);
+    /** @type {Record<string, typeof recoverable>} */
     const byClass = {};
     for (const r of recoverable) (byClass[r.className] ??= []).push(r);
     for (const cn of Object.keys(byClass).sort())

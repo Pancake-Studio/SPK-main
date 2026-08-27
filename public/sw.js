@@ -68,7 +68,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration
       .showNotification(title, options)
-      .catch((err) => {
+      .catch((/** @type {unknown} */ err) => {
         console.error("[sw] showNotification failed:", err);
         // Fallback: try with minimal options (no badge/icon that might be invalid)
         return self.registration.showNotification("School Productivity Kits", {
@@ -86,7 +86,7 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clientList) => {
+      .then((/** @type {readonly WindowClient[]} */ clientList) => {
         for (const client of clientList) {
           if ("focus" in client) {
             client.navigate(targetUrl).catch(() => {});
@@ -97,7 +97,7 @@ self.addEventListener("notificationclick", (event) => {
           return self.clients.openWindow(targetUrl);
         }
       })
-      .catch((err) => {
+      .catch((/** @type {unknown} */ err) => {
         console.error("[sw] notificationclick error:", err);
       }),
   );
